@@ -1,3 +1,24 @@
+## 2026-01-23 — Lote 2 modelo de entrenamiento + vistas base
+
+**Tipo:** feature  
+**Alcance:** db | rls
+
+**Resumen**
+Se agrega el modelo de entrenamiento (programas, unidades, asignacion por aprendiz), estado explicito y transiciones append-only, con RLS estricta y vistas base para aprendiz y referente/admin.
+
+**Impacto**
+
+- Habilita progreso y estado del aprendiz con trazabilidad
+- Define contratos de lectura para pantallas base
+- Mantiene writes restringidos para flujos controlados
+
+**Checklist RLS (manual)**
+
+- Aprendiz: puede leer v_learner_training_home y v_learner_progress (solo propio)
+- Referente: puede leer v_referente_learners para su local
+- Admin Org: puede leer aprendices de su organizacion
+- Superadmin: puede leer todo
+
 ## 2026-01-23 — Lote 1 base multi-tenant + roles
 
 **Tipo:** feature  

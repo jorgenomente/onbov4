@@ -153,21 +153,32 @@ AGENTS.md
 
 ---
 
-### Flujo obligatorio
+### Flujo de Git (ETAPA MVP — SIMPLIFICADO)
 
-1. Crear rama:
-   `feature/<lote-x-descripcion>`
-2. Commits pequeños y atómicos
-3. Merge a `main`
-4. Push
+Mientras el proyecto se encuentre en etapa MVP temprana y sea desarrollado por una sola persona:
 
-La IA **DEBE indicar explícitamente**:
+- Todo el trabajo se realiza **directamente sobre `main`**
+- No se crean ramas por lote
+- No se usan PRs ni merges intermedios
+- Cada lote se valida con:
+  - `npx supabase db reset`
+  - `npm run lint`
+  - `npm run build`
+- Luego se realiza:
+  - `git commit`
+  - `git push origin main`
 
-- nombre de la rama
-- commits sugeridos
-- cuándo mergear
+Este flujo es **intencional** para reducir fricción y acelerar iteración.
 
-Si un cambio **no amerita commit**, debe decirlo explícitamente.
+La IA **NO debe proponer ramas ni merges** salvo que el humano lo solicite explícitamente.
+
+Cuando el proyecto incorpore:
+
+- más desarrolladores
+- CI/CD
+- tests automáticos
+
+el flujo podrá volver a un esquema basado en ramas.
 
 ---
 
