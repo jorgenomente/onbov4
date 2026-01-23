@@ -1,3 +1,22 @@
+## 2026-01-23 — Lote 4 knowledge grounding + context builder base
+
+**Tipo:** feature  
+**Alcance:** db | rls
+
+**Resumen**
+Se crean tablas de conocimiento y mapeo por unidad con RLS estricta, y un context builder server-only que garantiza grounding en conocimiento permitido.
+
+**Impacto**
+
+- El bot queda limitado a conocimiento cargado por unidad activa + pasadas
+- Se separa claramente DB (grounding) de proveedor IA
+- Writes quedan reservados para flujos server-only
+
+**Checklist RLS (manual)**
+
+- Aprendiz no puede acceder a knowledge de otra org/local
+- knowledge con local_id NULL es visible en su org
+
 ## 2026-01-23 — Lote 3 conversacion y auditoria base
 
 **Tipo:** feature  
