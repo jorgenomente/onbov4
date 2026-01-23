@@ -1,3 +1,25 @@
+## 2026-01-23 — Lote 3 conversacion y auditoria base
+
+**Tipo:** feature  
+**Alcance:** db | rls
+
+**Resumen**
+Se crean conversaciones, mensajes y evaluaciones base con reglas append-only, RLS estricta y vistas de lectura para aprendiz y referente/admin.
+
+**Impacto**
+
+- Habilita persistencia y auditoria completa del chat
+- Define contratos de lectura para UI
+- Escrituras reservadas a flujos server-only (RPC/Server Actions)
+
+**Checklist RLS (manual)**
+
+- Aprendiz: ve solo sus conversaciones y mensajes
+- Referente: ve conversaciones de su local
+- Admin Org: ve conversaciones de locales de su organizacion
+- Superadmin: ve todo
+- No se permiten UPDATE/DELETE en conversaciones ni mensajes
+
 ## 2026-01-23 — Lote 2 modelo de entrenamiento + vistas base
 
 **Tipo:** feature  
