@@ -289,3 +289,31 @@ Se migra el archivo de middleware a proxy para alinearse con la convención de N
 - Mantiene la misma protección de rutas por sesión
 - Elimina el warning de build sobre middleware
 - No cambia flujos de login/logout
+
+## 2026-01-25 — Fix env Supabase en cliente
+
+**Tipo:** fix  
+**Alcance:** frontend
+
+**Resumen**
+Se corrige el acceso a variables de entorno públicas en el cliente para evitar undefined en runtime y permitir login.
+
+**Impacto**
+
+- Login deja de romper por NEXT_PUBLIC_SUPABASE_URL undefined
+- Mantiene uso de variables públicas en build-time
+- Sin cambios en flujos de auth
+
+## 2026-01-25 — Chat mínimo en entrenamiento
+
+**Tipo:** feature  
+**Alcance:** frontend
+
+**Resumen**
+Se conecta la pantalla /learner/training al server action existente para enviar mensajes y mostrar el hilo actual con grounding fail-closed.
+
+**Impacto**
+
+- Aprendiz ve el chat y puede enviar mensajes
+- Se refresca el hilo tras cada envío
+- Errores de grounding se muestran con mensaje user-friendly

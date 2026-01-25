@@ -8,6 +8,7 @@ import {
   mapThreadToProviderMessages,
 } from '../../../lib/ai/thread';
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
+import { revalidatePath } from 'next/cache';
 
 type SendLearnerMessageInput = {
   text: string;
@@ -109,6 +110,7 @@ export async function sendLearnerMessage(
     throw new Error('Failed to store bot message');
   }
 
+  revalidatePath('/learner/training');
   return { reply: reply.text };
 }
 
