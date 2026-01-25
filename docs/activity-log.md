@@ -345,3 +345,17 @@ Se agrega un seed mínimo de practice_scenarios para programas activos del entor
 - Iniciar práctica ya no falla por falta de escenarios
 - Se mantiene lógica RLS y append-only existente
 - No cambia esquema ni flujos de evaluación
+
+## 2026-01-25 — Seed demo completo (Auth + datos)
+
+**Tipo:** feature  
+**Alcance:** db | backend
+
+**Resumen**
+Se agrega seed demo/local completo para reset reproducible: org/local/programa, unidades, knowledge, práctica, evaluación final, usuarios Auth y perfiles.
+
+**Impacto**
+
+- `npx supabase db reset` deja el entorno listo para smoke tests
+- Usuarios demo pueden loguearse con password común
+- Chat/práctica/evaluación tienen datos base cargados
