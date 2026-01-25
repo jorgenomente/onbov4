@@ -1,3 +1,28 @@
+## 2026-01-25 — Gemini provider support (LLM)
+
+**Tipo:** feature  
+**Alcance:** backend
+
+**Resumen**
+Se agrega soporte Gemini en la capa provider-agnostic sin romper OpenAI, con fail-closed y configuracion por entorno.
+
+**Impacto**
+
+- Permite seleccionar LLM via LLM_PROVIDER=gemini
+- Modelo default: gemini-2.5-flash (si GEMINI_MODEL no está definido)
+- No habilita grounding web ni herramientas externas
+
+**Env vars**
+
+- LLM_PROVIDER=gemini
+- GEMINI_API_KEY
+- GEMINI_MODEL (opcional, default gemini-2.5-flash)
+
+**Config**
+
+- .env.local (dev)
+- Vercel Environment Variables (prod)
+
 ## 2026-01-25 — Lote 5 chat e2e + provider agnostic
 
 **Tipo:** feature  
