@@ -1,8 +1,8 @@
-# NEW
+# MISC-NEW
 
 ## Contexto
 
-Prompt inicial corto del usuario sin contexto adicional. Se requiere aclaración antes de ejecutar trabajo.
+Prompt inicial sin contexto especificado; requiere aclaración del objetivo.
 
 ## Prompt ejecutado
 
@@ -11,7 +11,7 @@ new
 ```
 
 Resultado esperado
-Aclarar el objetivo y el entregable solicitado antes de ejecutar cambios.
+Aclarar el objetivo y definir el siguiente paso concreto (doc, migración, pantalla, etc.).
 
 Notas (opcional)
-Sin contexto; se solicitó precisión al usuario.
+Pendiente de aclaracion del usuario.

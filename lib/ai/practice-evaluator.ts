@@ -47,19 +47,94 @@ export function detectDoubtSignals(text: string): string[] {
 }
 
 function parseEvaluationJson(raw: string): PracticeEvaluation {
-  const parsed = JSON.parse(raw) as PracticeEvaluation;
+  // Examples for manual verification (no test harness yet):
+  // 1) {"score":80,"verdict":"pass","strengths":[],"gaps":[],"feedback":"ok","doubt_signals":[]}
+  // 2) ```json {"score":0,"verdict":"fail","strengths":[],"gaps":["x"],"feedback":"y","doubt_signals":[]} ```
+  // 3) Texto previo {"score":50,"verdict":"partial","strengths":["a"],"gaps":["b"],"feedback":"c","doubt_signals":[]} texto final
+  const defaultEvaluation: PracticeEvaluation = {
+    score: 0,
+    verdict: 'fail',
+    strengths: [],
+    gaps: ['No se pudo interpretar la evaluación automática.'],
+    feedback:
+      'No pude evaluar tu respuesta en este momento. Intentá nuevamente.',
+    doubt_signals: [],
+  };
 
-  if (
-    typeof parsed.score !== 'number' ||
-    parsed.score < 0 ||
-    parsed.score > 100 ||
-    !['pass', 'partial', 'fail'].includes(parsed.verdict) ||
-    !Array.isArray(parsed.strengths) ||
-    !Array.isArray(parsed.gaps) ||
-    typeof parsed.feedback !== 'string' ||
-    !Array.isArray(parsed.doubt_signals)
-  ) {
-    throw new Error('Invalid evaluation format');
+  const truncate = (value: string, max = 500) =>
+    value.length > max ? `${value.slice(0, max)}…` : value;
+
+  const extractFromFence = (value: string) => {
+    const jsonFence = value.match(/```json\s*([\s\S]*?)\s*```/i);
+    if (jsonFence?.[1]) return jsonFence[1].trim();
+    const anyFence = value.match(/```\s*([\s\S]*?)\s*```/i);
+    if (anyFence?.[1]) return anyFence[1].trim();
+    return null;
+  };
+
+  const extractFromBraces = (value: string) => {
+    const start = value.indexOf('{');
+    const end = value.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      return value.slice(start, end + 1).trim();
+    }
+    return null;
+  };
+
+  const rawTrimmed = raw.trim();
+  let sanitized = rawTrimmed;
+  const fenced = extractFromFence(rawTrimmed);
+  if (fenced) {
+    sanitized = fenced;
+  }
+
+  let parsed: PracticeEvaluation | null = null;
+  try {
+    parsed = JSON.parse(sanitized) as PracticeEvaluation;
+  } catch (error) {
+    const braced = extractFromBraces(rawTrimmed);
+    if (braced) {
+      sanitized = braced;
+      try {
+        parsed = JSON.parse(sanitized) as PracticeEvaluation;
+      } catch (innerError) {
+        console.error('practice-evaluator: parse failed', {
+          error: innerError instanceof Error ? innerError.message : innerError,
+          raw: truncate(rawTrimmed),
+          sanitized: truncate(sanitized),
+        });
+        return defaultEvaluation;
+      }
+    } else {
+      console.error('practice-evaluator: parse failed', {
+        error: error instanceof Error ? error.message : error,
+        raw: truncate(rawTrimmed),
+        sanitized: truncate(sanitized),
+      });
+      return defaultEvaluation;
+    }
+  }
+
+  if (!parsed) {
+    return defaultEvaluation;
+  }
+
+  const isValid =
+    typeof parsed.score === 'number' &&
+    parsed.score >= 0 &&
+    parsed.score <= 100 &&
+    ['pass', 'partial', 'fail'].includes(parsed.verdict) &&
+    Array.isArray(parsed.strengths) &&
+    Array.isArray(parsed.gaps) &&
+    typeof parsed.feedback === 'string' &&
+    Array.isArray(parsed.doubt_signals);
+
+  if (!isValid) {
+    console.error('practice-evaluator: invalid format', {
+      raw: truncate(rawTrimmed),
+      sanitized: truncate(sanitized),
+    });
+    return defaultEvaluation;
   }
 
   return {
@@ -85,6 +160,7 @@ export async function evaluatePracticeAnswer(params: {
     `Reglas:\n` +
     `- No uses conocimiento externo. Usa SOLO el contexto provisto.\n` +
     `- Evalúa contra success_criteria.\n` +
+    `- Responde SOLO con JSON válido. Sin markdown, sin backticks, sin texto extra.\n` +
     `- Responde en JSON estricto con esta forma:\n` +
     `{"score":number,"verdict":"pass|partial|fail","strengths":string[],"gaps":string[],"feedback":string,"doubt_signals":string[]}\n\n` +
     `Escenario:\n` +

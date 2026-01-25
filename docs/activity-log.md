@@ -359,3 +359,17 @@ Se agrega seed demo/local completo para reset reproducible: org/local/programa, 
 - `npx supabase db reset` deja el entorno listo para smoke tests
 - Usuarios demo pueden loguearse con password común
 - Chat/práctica/evaluación tienen datos base cargados
+
+## 2026-01-25 — Parser robusto evaluacion practica
+
+**Tipo:** fix  
+**Alcance:** backend | ux
+
+**Resumen**
+Se endurece el parseo del output del evaluador de practica para aceptar JSON con code fences o texto extra y fallar en modo seguro sin romper la UI.
+
+**Impacto**
+
+- Evita 500 cuando el LLM devuelve markdown o contenido extra
+- Devuelve feedback fallback y registra logs truncados para depuracion
+- No cambia esquema ni RLS
