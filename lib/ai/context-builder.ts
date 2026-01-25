@@ -1,36 +1,6 @@
 import 'server-only';
 
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-
-function requireEnv(name: string) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is not set`);
-  }
-  return value;
-}
-
-const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
-const supabaseAnonKey = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-
-async function getServerSupabaseClient() {
-  const cookieStore = await cookies();
-
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      get(name) {
-        return cookieStore.get(name)?.value;
-      },
-      set(name, value, options) {
-        cookieStore.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        cookieStore.set({ name, value: '', ...options, maxAge: 0 });
-      },
-    },
-  });
-}
+import { getSupabaseServerClient } from '../server/supabase';
 
 type ActiveUnitContext = {
   learnerId: string;
@@ -47,7 +17,7 @@ type ActiveUnitContext = {
 export async function getActiveUnitContext(
   learnerId: string,
 ): Promise<ActiveUnitContext> {
-  const supabase = await getServerSupabaseClient();
+  const supabase = await getSupabaseServerClient();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user?.id) {
@@ -116,7 +86,7 @@ export async function getKnowledgeForContext(unitIds: string[]) {
     return [];
   }
 
-  const supabase = await getServerSupabaseClient();
+  const supabase = await getSupabaseServerClient();
 
   const { data: mappings, error: mappingsError } = await supabase
     .from('unit_knowledge_map')
@@ -151,7 +121,7 @@ export async function buildChatContext(learnerId: string) {
   const activeContext = await getActiveUnitContext(learnerId);
   const unitIds = [activeContext.currentUnitId, ...activeContext.pastUnitIds];
 
-  const supabase = await getServerSupabaseClient();
+  const supabase = await getSupabaseServerClient();
   const { data: currentMappings, error: currentMappingsError } = await supabase
     .from('unit_knowledge_map')
     .select('knowledge_id')

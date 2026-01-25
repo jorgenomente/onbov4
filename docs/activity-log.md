@@ -1,3 +1,27 @@
+## 2026-01-25 — Lote 5 chat e2e + provider agnostic
+
+**Tipo:** feature  
+**Alcance:** backend | db | rls
+
+**Resumen**
+Se agrega capa LLM provider-agnostic, server action para mensajes del aprendiz, y policies de insert server-only para conversaciones/mensajes.
+
+**Impacto**
+
+- Chat end-to-end con persistencia append-only
+- Fail-closed si no hay provider configurado
+- Contexto estrictamente grounded en conocimiento permitido
+
+**Env vars**
+
+- OPENAI_API_KEY
+- OPENAI_MODEL
+
+**Checklist**
+
+- Sin provider configurado: falla con error claro
+- Con provider: persiste mensaje aprendiz + bot
+
 ## 2026-01-23 — Lote 4 knowledge grounding + context builder base
 
 **Tipo:** feature  
