@@ -42,7 +42,7 @@ function withAuthCookies(request: NextRequest, response: NextResponse) {
   });
 }
 
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const response = NextResponse.next();
   const supabase = withAuthCookies(request, response);

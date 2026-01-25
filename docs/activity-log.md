@@ -275,3 +275,17 @@ Se agrega login básico, logout, protección de rutas por sesión y redirección
 - /login y credenciales válidas → redirige por rol
 - /learner/\* sin sesión → /login?next=...
 - /login con sesión → /auth/redirect
+
+## 2026-01-25 — Migración middleware → proxy
+
+**Tipo:** refactor  
+**Alcance:** frontend
+
+**Resumen**
+Se migra el archivo de middleware a proxy para alinearse con la convención de Next.js 16 y eliminar el warning de deprecación.
+
+**Impacto**
+
+- Mantiene la misma protección de rutas por sesión
+- Elimina el warning de build sobre middleware
+- No cambia flujos de login/logout
