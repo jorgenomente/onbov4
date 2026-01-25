@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { APP_URL } from '../resend';
+import { getAppUrl } from '../resend';
 
 type DecisionNeedsReinforcementParams = {
   learnerName?: string | null;
@@ -11,7 +11,7 @@ export function decisionNeedsReinforcementTemplate(
   params: DecisionNeedsReinforcementParams,
 ) {
   const name = params.learnerName?.trim() || 'Hola';
-  const trainingUrl = `${APP_URL}/learner/training`;
+  const trainingUrl = `${getAppUrl()}/learner/training`;
 
   const subject = 'Tu evaluación requiere refuerzo';
   const html = `

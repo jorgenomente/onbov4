@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { APP_URL } from '../resend';
+import { getAppUrl } from '../resend';
 
 type DecisionApprovedParams = {
   learnerName?: string | null;
@@ -9,7 +9,7 @@ type DecisionApprovedParams = {
 
 export function decisionApprovedTemplate(params: DecisionApprovedParams) {
   const name = params.learnerName?.trim() || 'Hola';
-  const trainingUrl = `${APP_URL}/learner/training`;
+  const trainingUrl = `${getAppUrl()}/learner/training`;
 
   const subject = 'Tu evaluación fue aprobada';
   const html = `

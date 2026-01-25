@@ -19,16 +19,39 @@ function requireEnv(name: string) {
   return value;
 }
 
-const resendApiKey = requireEnv('RESEND_API_KEY');
-const defaultFrom = requireEnv('RESEND_FROM');
+type ResendConfig = {
+  client: Resend;
+  defaultFrom: string;
+};
 
-export const resend = new Resend(resendApiKey);
+let cachedConfig: ResendConfig | null = null;
+
+function getResendConfig(): ResendConfig {
+  if (cachedConfig) {
+    return cachedConfig;
+  }
+
+  const resendApiKey = requireEnv('RESEND_API_KEY');
+  const defaultFrom = requireEnv('RESEND_FROM');
+
+  cachedConfig = {
+    client: new Resend(resendApiKey),
+    defaultFrom,
+  };
+
+  return cachedConfig;
+}
+
+export function getDefaultFrom() {
+  return getResendConfig().defaultFrom;
+}
 
 export async function sendEmail(params: SendEmailParams) {
   if (!params.html && !params.text) {
     throw new Error('sendEmail requires html or text');
   }
 
+  const { client, defaultFrom } = getResendConfig();
   const from = params.from ?? defaultFrom;
   const base = {
     from,
@@ -42,7 +65,7 @@ export async function sendEmail(params: SendEmailParams) {
       html: params.html,
     };
 
-    return resend.emails.send(options);
+    return client.emails.send(options);
   }
 
   const text = params.text;
@@ -55,5 +78,5 @@ export async function sendEmail(params: SendEmailParams) {
     text,
   };
 
-  return resend.emails.send(options);
+  return client.emails.send(options);
 }

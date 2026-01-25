@@ -10,7 +10,12 @@ function requireEnv(name: string) {
   return value;
 }
 
-export const EMAIL_FROM = requireEnv('RESEND_FROM');
-export const APP_URL = requireEnv('APP_URL');
+export function getEmailFrom() {
+  return requireEnv('RESEND_FROM');
+}
+
+export function getAppUrl() {
+  return requireEnv('APP_URL');
+}
 
 export { sendEmail };
