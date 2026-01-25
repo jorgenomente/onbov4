@@ -1,3 +1,22 @@
+## 2026-01-25 — Lote 7.1 emails de decisión
+
+**Tipo:** feature  
+**Alcance:** db | backend
+
+**Resumen**
+Se agregan emails transaccionales de decisiones humanas con Resend, registro append-only e idempotencia por decision_id.
+
+**Impacto**
+
+- El aprendiz recibe notificación de aprobado o refuerzo
+- Se registran envíos con estado sent/failed
+- Fail-closed si faltan claves o email del aprendiz
+
+**Checklist**
+
+- No duplica emails por decision_id
+- Decisión no se revierte si email falla
+
 ## 2026-01-25 — Lote 7 panel de revisión + decisiones humanas
 
 **Tipo:** feature  

@@ -1,5 +1,6 @@
 'use server';
 
+import { sendDecisionEmail } from '../../../lib/email/sendDecisionEmail';
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
 
 type DecisionInput = {
@@ -57,16 +58,18 @@ export async function approveLearner(input: DecisionInput) {
   const { supabase, reviewerId } = await getReviewerProfile();
   const learnerTraining = await loadLearnerTraining(supabase, input.learnerId);
 
-  const { error: decisionError } = await supabase
+  const { data: decisionRecord, error: decisionError } = await supabase
     .from('learner_review_decisions')
     .insert({
       learner_id: input.learnerId,
       reviewer_id: reviewerId,
       decision: 'approved',
       reason,
-    });
+    })
+    .select('id')
+    .maybeSingle();
 
-  if (decisionError) {
+  if (decisionError || !decisionRecord) {
     throw new Error('Failed to store decision');
   }
 
@@ -93,7 +96,20 @@ export async function approveLearner(input: DecisionInput) {
     throw new Error('Failed to update learner status');
   }
 
-  return { success: true };
+  const emailResult = await sendDecisionEmail({
+    decisionId: decisionRecord.id,
+    decisionType: 'approved',
+  });
+
+  if (emailResult.status === 'failed') {
+    return { success: true, email: 'failed', emailError: emailResult.error };
+  }
+
+  if (emailResult.status === 'skipped') {
+    return { success: true, email: 'skipped' };
+  }
+
+  return { success: true, email: 'sent' };
 }
 
 export async function requestReinforcement(input: DecisionInput) {
@@ -105,16 +121,18 @@ export async function requestReinforcement(input: DecisionInput) {
   const { supabase, reviewerId } = await getReviewerProfile();
   const learnerTraining = await loadLearnerTraining(supabase, input.learnerId);
 
-  const { error: decisionError } = await supabase
+  const { data: decisionRecord, error: decisionError } = await supabase
     .from('learner_review_decisions')
     .insert({
       learner_id: input.learnerId,
       reviewer_id: reviewerId,
       decision: 'needs_reinforcement',
       reason,
-    });
+    })
+    .select('id')
+    .maybeSingle();
 
-  if (decisionError) {
+  if (decisionError || !decisionRecord) {
     throw new Error('Failed to store decision');
   }
 
@@ -141,5 +159,18 @@ export async function requestReinforcement(input: DecisionInput) {
     throw new Error('Failed to update learner status');
   }
 
-  return { success: true };
+  const emailResult = await sendDecisionEmail({
+    decisionId: decisionRecord.id,
+    decisionType: 'needs_reinforcement',
+  });
+
+  if (emailResult.status === 'failed') {
+    return { success: true, email: 'failed', emailError: emailResult.error };
+  }
+
+  if (emailResult.status === 'skipped') {
+    return { success: true, email: 'skipped' };
+  }
+
+  return { success: true, email: 'sent' };
 }
