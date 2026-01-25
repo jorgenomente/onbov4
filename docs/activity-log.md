@@ -1,3 +1,23 @@
+## 2026-01-25 — Lote 8 evaluación final
+
+**Tipo:** feature  
+**Alcance:** db | rls | backend | ux
+
+**Resumen**
+Se implementa la Evaluación Final con configuración, intentos, preguntas/respuestas y evaluaciones semánticas, incluyendo cooldown, bloqueo y recomendación del bot.
+
+**Impacto**
+
+- Evaluación final auditable y append-only para respuestas
+- Recomendación del bot sin reemplazar decisión humana
+- Estado del aprendiz pasa a en_revision al finalizar
+
+**Checklist**
+
+- Respeta cooldown y max_attempts
+- Intenta solo si entrenamiento completo
+- Registro de evaluaciones por unidad
+
 ## 2026-01-25 — Lote 7.1 emails de decisión
 
 **Tipo:** feature  
