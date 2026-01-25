@@ -241,3 +241,37 @@ Se agrega inicializacion server-only de Resend y helper para envio de emails tra
 - Habilita integrar invitaciones y notificaciones via Resend
 - Centraliza validacion de variables de entorno necesarias
 - No cambia el flujo de UI ni permisos
+
+## 2026-01-25 — Fix build por RESEND_FROM missing
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+Se evita leer variables de entorno de Resend en import-time para que el build no falle si faltan envs; ahora se leen solo al enviar email.
+
+**Impacto**
+
+- Build de Vercel no se rompe al recolectar páginas que importan acciones de email
+- Las envs siguen siendo obligatorias en runtime al enviar emails
+- No cambia el flujo de aprobación ni la lógica de envío
+
+## 2026-01-25 — Lote 8.5 Auth UI mínima
+
+**Tipo:** feature  
+**Alcance:** backend | frontend | ux
+
+**Resumen**
+Se agrega login básico, logout, protección de rutas por sesión y redirección por rol usando Supabase SSR. Se definen rutas públicas/privadas, middleware de sesión y layouts con enforcement de rol.
+
+**Impacto**
+
+- Acceso por email+password para usuarios existentes de Supabase Auth
+- Redirección segura por rol tras login y bloqueo de rutas no permitidas
+- Logout server-side y rutas protegidas por sesión
+
+**Cómo testear (manual)**
+
+- /login y credenciales válidas → redirige por rol
+- /learner/\* sin sesión → /login?next=...
+- /login con sesión → /auth/redirect
