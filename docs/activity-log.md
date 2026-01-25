@@ -1,3 +1,23 @@
+## 2026-01-25 — Gemini CLI scripts
+
+**Tipo:** docs  
+**Alcance:** backend
+
+**Resumen**
+Se agregan scripts CLI para listar modelos Gemini y ejecutar un smoke test usando la API key configurada.
+
+**Uso**
+
+- Env vars:
+  - LLM_PROVIDER=gemini
+  - GEMINI_API_KEY=... (requerida)
+  - GEMINI_MODEL=gemini-2.5-flash (opcional)
+- Listar modelos: npm run gemini:list-models
+- Smoke test: npm run gemini:smoke
+
+**Nota**
+La disponibilidad de modelos depende de lo que devuelve la API con tu key.
+
 ## 2026-01-25 — Gemini provider support (LLM)
 
 **Tipo:** feature  
