@@ -464,4 +464,169 @@ no como generador automático de código.
 
 👉 **Ante cualquier duda, se pregunta antes de ejecutar.**
 
+12. Registro automático de Prompts (OBLIGATORIO)
+    Propósito
+
+El proyecto mantiene un registro auditable y versionado de todos los prompts ejecutados para el desarrollo del sistema.
+
+Este registro sirve como:
+
+documentación técnica viva
+
+historial de decisiones
+
+trazabilidad del desarrollo asistido por IA
+
+material reutilizable para futuros agentes / auditorías
+
+Ubicación (NO negociable)
+
+Todos los prompts deben guardarse en:
+
+/docs/prompts/
+
+Regla general (OBLIGATORIA)
+
+👉 Todo prompt que el humano ejecute en Codex CLI DEBE quedar documentado automáticamente.
+
+La IA NO debe asumir que el humano lo hará manualmente.
+
+Tipos de prompts que deben documentarse
+
+La IA DEBE guardar en /docs/prompts/:
+
+Prompts de Lotes
+
+Ejemplo:
+
+LOTE-1.md
+
+LOTE-2.md
+
+LOTE-3.md
+
+LOTE-6.md
+
+Prompts subsecuentes / auxiliares, aunque no sean un lote completo:
+
+setup de providers (Gemini, OpenAI, etc.)
+
+scripts de diagnóstico
+
+cambios de arquitectura
+
+ajustes de seguridad
+
+tooling interno
+
+Estos deben guardarse con nombres descriptivos, por ejemplo:
+
+SETUP-GEMINI-PROVIDER.md
+
+GEMINI-LIST-MODELS.md
+
+ARCH-GIT-FLOW-SIMPLIFICADO.md
+
+Convención de nombres (OBLIGATORIA)
+
+Lotes:
+
+LOTE-<numero>.md
+
+Prompts no asociados a lote:
+
+<CATEGORIA>-<DESCRIPCION-CORTA>.md
+
+Usar:
+
+MAYÚSCULAS
+
+guiones -
+
+sin fechas en el nombre (git ya versiona)
+
+Contenido del archivo de prompt
+
+Cada archivo en /docs/prompts/ DEBE contener:
+
+# <TÍTULO DEL PROMPT>
+
+## Contexto
+
+Breve descripción de para qué se ejecuta este prompt.
+
+## Prompt ejecutado
+
+```txt
+<PEGAR AQUÍ EL PROMPT EXACTO EJECUTADO EN CODEX CLI>
+
+Resultado esperado
+
+Qué se espera que el prompt produzca (migraciones, código, docs, etc.).
+
+Notas (opcional)
+
+Decisiones relevantes, aclaraciones o advertencias.
+
+
+⚠️ **El prompt debe pegarse íntegro, sin modificaciones ni resúmenes.**
+
 ---
+
+### Responsabilidad de la IA
+
+- La IA **DEBE crear el archivo del prompt antes o durante la ejecución**
+- La IA **NO debe preguntar si quiere documentarlo**
+- La IA **NO debe omitir este paso**
+- Si por alguna razón no puede escribir el archivo:
+  - debe **detenerse**
+  - y avisar explícitamente el bloqueo
+
+---
+
+### Relación con Git
+
+- Los archivos en `/docs/prompts/` **se commitean junto con el lote o cambio**
+- No se aceptan prompts “no documentados” en commits finales
+- El historial de prompts es parte del producto
+
+---
+
+### Regla dura
+
+> **Si un prompt no está documentado, se considera que el trabajo está incompleto.**
+
+---
+
+### Ejemplo esperado
+
+
+
+/docs/prompts/
+├── LOTE-1.md
+├── LOTE-2.md
+├── LOTE-3.md
+├── SETUP-GEMINI-PROVIDER.md
+├── GEMINI-LIST-MODELS.md
+└── LOTE-6.md
+
+
+---
+
+## Impacto de esta regla
+
+- Mejora trazabilidad
+- Reduce dependencia de memoria humana
+- Permite reiniciar el proyecto con otro agente
+- Refuerza el carácter profesional y vendible del sistema
+
+---
+
+## Estado
+
+**ACTIVO — Regla obligatoria desde este momento**
+
+---
+
+---
+```

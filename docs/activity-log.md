@@ -1,3 +1,23 @@
+## 2026-01-25 — Lote 6 práctica + evaluación semántica
+
+**Tipo:** feature  
+**Alcance:** db | rls | backend
+
+**Resumen**
+Se agrega práctica integrada con escenarios, intentos y evaluaciones append-only, más un evaluador server-only con señales de duda y salida JSON estricta.
+
+**Impacto**
+
+- Role-play persistente dentro del flujo de chat
+- Evaluación semántica grounded en knowledge permitido
+- Cierre de intento vía eventos append-only (sin updates)
+
+**Checklist**
+
+- Sin API key: falla con error claro (fail-closed)
+- startPracticeScenario crea conversation + attempt
+- submitPracticeAnswer persiste mensaje + evaluación + feedback
+
 ## 2026-01-25 — Gemini CLI scripts
 
 **Tipo:** docs  
