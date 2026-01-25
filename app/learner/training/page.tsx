@@ -86,7 +86,10 @@ export default async function LearnerTrainingPage() {
         </p>
       </header>
 
-      <ChatClient initialMessages={initialMessages} />
+      <ChatClient
+        initialMessages={initialMessages}
+        initialContext={activeConversation?.context ?? 'training'}
+      />
     </main>
   );
 }

@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { sendLearnerMessage } from './actions';
+import {
+  sendLearnerMessage,
+  startPracticeScenario,
+  submitPracticeAnswer,
+} from './actions';
 
 type ChatMessage = {
   id: string;
@@ -14,20 +18,44 @@ type ChatMessage = {
 
 type ChatClientProps = {
   initialMessages: ChatMessage[];
+  initialContext: 'training' | 'practice' | string;
 };
 
-export default function ChatClient({ initialMessages }: ChatClientProps) {
+export default function ChatClient({
+  initialMessages,
+  initialContext,
+}: ChatClientProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [mode, setMode] = useState<'training' | 'practice'>(
+    initialContext === 'practice' ? 'practice' : 'training',
+  );
 
   const orderedMessages = useMemo(() => messages, [messages]);
 
   useEffect(() => {
     setMessages(initialMessages);
-  }, [initialMessages]);
+    setMode(initialContext === 'practice' ? 'practice' : 'training');
+  }, [initialMessages, initialContext]);
+
+  async function handleStartPractice() {
+    if (loading) return;
+    setLoading(true);
+    setError('');
+
+    try {
+      await startPracticeScenario();
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setError('No pudimos iniciar la práctica. Intentá de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,7 +66,10 @@ export default function ChatClient({ initialMessages }: ChatClientProps) {
     setError('');
 
     try {
-      const response = await sendLearnerMessage({ text });
+      const response =
+        mode === 'practice'
+          ? await submitPracticeAnswer({ text })
+          : await sendLearnerMessage({ text });
       const optimisticLearner: ChatMessage = {
         id: `local-${Date.now()}-learner`,
         sender: 'learner',
@@ -59,6 +90,8 @@ export default function ChatClient({ initialMessages }: ChatClientProps) {
       const message = err instanceof Error ? err.message : 'Error inesperado.';
       if (message.toLowerCase().includes('no knowledge configured')) {
         setError('No tengo información cargada para responder esa pregunta.');
+      } else if (message.toLowerCase().includes('llm provider')) {
+        setError('No pudimos evaluar tu respuesta en este momento.');
       } else {
         setError('No pudimos enviar tu mensaje. Intentá de nuevo.');
       }
@@ -72,7 +105,14 @@ export default function ChatClient({ initialMessages }: ChatClientProps) {
     <section className="flex flex-1 flex-col gap-4">
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700">Chat</h2>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700">
+              {mode === 'practice' ? 'Práctica' : 'Chat'}
+            </h2>
+            {mode === 'practice' ? (
+              <p className="text-xs text-slate-500">Modo role-play activo.</p>
+            ) : null}
+          </div>
           {loading && (
             <span className="text-xs text-slate-400">Enviando...</span>
           )}
@@ -112,6 +152,17 @@ export default function ChatClient({ initialMessages }: ChatClientProps) {
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
+      ) : null}
+
+      {mode !== 'practice' ? (
+        <button
+          type="button"
+          onClick={handleStartPractice}
+          disabled={loading}
+          className="w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          Iniciar práctica
+        </button>
       ) : null}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">

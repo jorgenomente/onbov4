@@ -317,3 +317,17 @@ Se conecta la pantalla /learner/training al server action existente para enviar 
 - Aprendiz ve el chat y puede enviar mensajes
 - Se refresca el hilo tras cada envío
 - Errores de grounding se muestran con mensaje user-friendly
+
+## 2026-01-25 — CTA práctica en entrenamiento
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se agrega CTA para iniciar práctica desde /learner/training y se conecta el envío de respuestas con el motor de práctica existente.
+
+**Impacto**
+
+- El aprendiz puede iniciar práctica y ver el prompt en el chat
+- Las respuestas se evalúan vía server action y se refresca el hilo
+- Errores del evaluador se muestran con mensaje amigable
