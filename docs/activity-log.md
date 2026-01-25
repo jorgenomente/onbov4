@@ -1,3 +1,23 @@
+## 2026-01-25 — Lote 7 panel de revisión + decisiones humanas
+
+**Tipo:** feature  
+**Alcance:** db | rls | backend | ux
+
+**Resumen**
+Se agrega el panel de revisión para referentes/admin, decisiones humanas append-only y vistas de evidencia, con acciones server-only y sin emails.
+
+**Impacto**
+
+- Decisiones humanas quedan auditadas y trazables
+- Referentes/Admin pueden revisar evidencias y decidir
+- Emails se difieren al Lote 7.1
+
+**Checklist**
+
+- Referente ve solo su local, admin_org su org
+- Aprendiz no accede al panel
+- Decisiones no se sobrescriben (append-only)
+
 ## 2026-01-25 — Lote 6 práctica + evaluación semántica
 
 **Tipo:** feature  

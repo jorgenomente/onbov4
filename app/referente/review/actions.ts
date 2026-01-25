@@ -1,0 +1,145 @@
+'use server';
+
+import { getSupabaseServerClient } from '../../../lib/server/supabase';
+
+type DecisionInput = {
+  learnerId: string;
+  reason: string;
+};
+
+async function getReviewerProfile() {
+  const supabase = await getSupabaseServerClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user?.id) {
+    throw new Error('Unauthenticated');
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('user_id, role, local_id, org_id')
+    .eq('user_id', userData.user.id)
+    .maybeSingle();
+
+  if (profileError || !profile) {
+    throw new Error('Reviewer profile not found');
+  }
+
+  if (!['superadmin', 'admin_org', 'referente'].includes(profile.role)) {
+    throw new Error('Forbidden');
+  }
+
+  return { supabase, reviewerId: profile.user_id, role: profile.role };
+}
+
+async function loadLearnerTraining(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  learnerId: string,
+) {
+  const { data: learnerTraining, error } = await supabase
+    .from('learner_trainings')
+    .select('learner_id, status')
+    .eq('learner_id', learnerId)
+    .maybeSingle();
+
+  if (error || !learnerTraining) {
+    throw new Error('Learner training not found');
+  }
+
+  return learnerTraining;
+}
+
+export async function approveLearner(input: DecisionInput) {
+  const reason = input.reason?.trim();
+  if (!input.learnerId || !reason) {
+    throw new Error('Reason is required');
+  }
+
+  const { supabase, reviewerId } = await getReviewerProfile();
+  const learnerTraining = await loadLearnerTraining(supabase, input.learnerId);
+
+  const { error: decisionError } = await supabase
+    .from('learner_review_decisions')
+    .insert({
+      learner_id: input.learnerId,
+      reviewer_id: reviewerId,
+      decision: 'approved',
+      reason,
+    });
+
+  if (decisionError) {
+    throw new Error('Failed to store decision');
+  }
+
+  const { error: transitionError } = await supabase
+    .from('learner_state_transitions')
+    .insert({
+      learner_id: input.learnerId,
+      from_status: learnerTraining.status,
+      to_status: 'aprobado',
+      reason,
+      actor_user_id: reviewerId,
+    });
+
+  if (transitionError) {
+    throw new Error('Failed to store state transition');
+  }
+
+  const { error: updateError } = await supabase
+    .from('learner_trainings')
+    .update({ status: 'aprobado' })
+    .eq('learner_id', input.learnerId);
+
+  if (updateError) {
+    throw new Error('Failed to update learner status');
+  }
+
+  return { success: true };
+}
+
+export async function requestReinforcement(input: DecisionInput) {
+  const reason = input.reason?.trim();
+  if (!input.learnerId || !reason) {
+    throw new Error('Reason is required');
+  }
+
+  const { supabase, reviewerId } = await getReviewerProfile();
+  const learnerTraining = await loadLearnerTraining(supabase, input.learnerId);
+
+  const { error: decisionError } = await supabase
+    .from('learner_review_decisions')
+    .insert({
+      learner_id: input.learnerId,
+      reviewer_id: reviewerId,
+      decision: 'needs_reinforcement',
+      reason,
+    });
+
+  if (decisionError) {
+    throw new Error('Failed to store decision');
+  }
+
+  const { error: transitionError } = await supabase
+    .from('learner_state_transitions')
+    .insert({
+      learner_id: input.learnerId,
+      from_status: learnerTraining.status,
+      to_status: 'en_riesgo',
+      reason,
+      actor_user_id: reviewerId,
+    });
+
+  if (transitionError) {
+    throw new Error('Failed to store state transition');
+  }
+
+  const { error: updateError } = await supabase
+    .from('learner_trainings')
+    .update({ status: 'en_riesgo' })
+    .eq('learner_id', input.learnerId);
+
+  if (updateError) {
+    throw new Error('Failed to update learner status');
+  }
+
+  return { success: true };
+}

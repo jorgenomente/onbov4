@@ -603,12 +603,12 @@ Decisiones relevantes, aclaraciones o advertencias.
 
 
 /docs/prompts/
-├── LOTE-1.md
-├── LOTE-2.md
-├── LOTE-3.md
+├── LOTE-1: <nombre del prompt segun su función>./md
+├── LOTE-2: Programa + Unidades + Asignación del aprendiz + Estado explícito + Views base.md
+├── LOTE-3: Conversación + Auditoría.md
 ├── SETUP-GEMINI-PROVIDER.md
 ├── GEMINI-LIST-MODELS.md
-└── LOTE-6.md
+└── LOTE-6: Práctica (role-play) + Evaluación semántica + señales de duda.md
 
 
 ---
