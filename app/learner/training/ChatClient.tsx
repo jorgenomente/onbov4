@@ -51,7 +51,12 @@ export default function ChatClient({
       router.refresh();
     } catch (err) {
       console.error(err);
-      setError('No pudimos iniciar la práctica. Intentá de nuevo.');
+      const message = err instanceof Error ? err.message : '';
+      if (message.toLowerCase().includes('no hay escenarios')) {
+        setError(message);
+      } else {
+        setError('No pudimos iniciar la práctica. Intentá de nuevo.');
+      }
     } finally {
       setLoading(false);
     }

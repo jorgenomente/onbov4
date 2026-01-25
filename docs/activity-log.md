@@ -331,3 +331,17 @@ Se agrega CTA para iniciar práctica desde /learner/training y se conecta el env
 - El aprendiz puede iniciar práctica y ver el prompt en el chat
 - Las respuestas se evalúan vía server action y se refresca el hilo
 - Errores del evaluador se muestran con mensaje amigable
+
+## 2026-01-25 — Seed práctica demo/local
+
+**Tipo:** fix  
+**Alcance:** db
+
+**Resumen**
+Se agrega un seed mínimo de practice_scenarios para programas activos del entorno demo/local, evitando errores de escenario inexistente.
+
+**Impacto**
+
+- Iniciar práctica ya no falla por falta de escenarios
+- Se mantiene lógica RLS y append-only existente
+- No cambia esquema ni flujos de evaluación

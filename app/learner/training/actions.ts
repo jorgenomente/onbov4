@@ -187,7 +187,15 @@ export async function startPracticeScenario(input?: {
       .maybeSingle();
 
     if (orgError || !orgScenario) {
-      throw new Error('Practice scenario not found');
+      console.error('Practice scenario not found', {
+        learnerId,
+        programId: trainingData.program_id,
+        localId: trainingData.local_id,
+        unitOrder: trainingData.current_unit_order,
+      });
+      throw new Error(
+        'No hay escenarios de práctica configurados para este local. Contactá a un referente.',
+      );
     }
 
     scenarioData = orgScenario;
