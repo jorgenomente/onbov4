@@ -1,5 +1,8 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
 import {
   canStartFinalEvaluation,
@@ -7,6 +10,30 @@ import {
   startFinalEvaluation,
   submitFinalAnswer,
 } from '../../../lib/ai/final-evaluation-engine';
+
+async function getActiveAttemptId(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+) {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user?.id) {
+    throw new Error('Unauthenticated');
+  }
+
+  const { data: attempt, error: attemptError } = await supabase
+    .from('final_evaluation_attempts')
+    .select('id')
+    .eq('learner_id', userData.user.id)
+    .eq('status', 'in_progress')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (attemptError || !attempt) {
+    throw new Error('No active final evaluation attempt');
+  }
+
+  return attempt.id;
+}
 
 export async function startFinalEvaluationAction() {
   const supabase = await getSupabaseServerClient();
@@ -20,11 +47,12 @@ export async function startFinalEvaluationAction() {
     throw new Error(allowed.reason);
   }
 
-  return startFinalEvaluation(userData.user.id);
+  await startFinalEvaluation(userData.user.id);
+  revalidatePath('/learner/final-evaluation');
+  redirect('/learner/final-evaluation');
 }
 
 export async function submitFinalAnswerAction(input: {
-  attemptId: string;
   questionId: string;
   text: string;
 }) {
@@ -33,18 +61,25 @@ export async function submitFinalAnswerAction(input: {
     throw new Error('Answer is required');
   }
 
+  const supabase = await getSupabaseServerClient();
+  const activeAttemptId = await getActiveAttemptId(supabase);
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('final-evaluation attempt resolve', {
+      derivedAttemptId: activeAttemptId,
+    });
+  }
+
   await submitFinalAnswer({
-    attemptId: input.attemptId,
+    supabase,
+    attemptId: activeAttemptId,
     questionId: input.questionId,
     learnerAnswer: answerText,
   });
 
-  const supabase = await getSupabaseServerClient();
-
   const { data: questions, error: questionsError } = await supabase
     .from('final_evaluation_questions')
     .select('id')
-    .eq('attempt_id', input.attemptId);
+    .eq('attempt_id', activeAttemptId);
 
   if (questionsError || !questions) {
     throw new Error('Failed to check remaining questions');
@@ -70,8 +105,11 @@ export async function submitFinalAnswerAction(input: {
   );
 
   if (remaining.length === 0) {
-    return finalizeAttempt(input.attemptId);
+    await finalizeAttempt(activeAttemptId);
+    revalidatePath('/learner/final-evaluation');
+    redirect('/learner/final-evaluation');
   }
 
-  return { status: 'in_progress' };
+  revalidatePath('/learner/final-evaluation');
+  redirect('/learner/final-evaluation');
 }

@@ -1,3 +1,59 @@
+## 2026-01-26 — E2E smoke tests con Playwright
+
+**Tipo:** feature  
+**Alcance:** frontend | qa | docs
+
+**Resumen**
+Se agregan tests E2E mínimos con Playwright para validar regresiones críticas (login, evaluación final sin refresh y cola de revisión), con data-testid mínimos y guía de ejecución.
+
+**Impacto**
+
+- Smoke tests reproducibles con Supabase local y seed demo
+- Cobertura mínima del flujo crítico de evaluación final
+- No se agregan bypasses ni endpoints de test
+
+## 2026-01-26 — Mock LLM provider para QA local
+
+**Tipo:** feature  
+**Alcance:** backend | qa
+
+**Resumen**
+Se agrega un provider LLM `mock` para entornos no productivos que devuelve respuestas determinísticas (incluyendo JSON de evaluación) y permite correr E2E sin depender de APIs externas.
+
+**Impacto**
+
+- E2E y QA local pueden ejecutarse sin consumir cuotas externas
+- Producción bloquea el uso de `LLM_PROVIDER=mock`
+- No cambia RLS ni modelo de datos
+
+## 2026-01-26 — Evaluación final: estado en revisión consistente
+
+**Tipo:** fix  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se muestra el estado “Evaluación enviada / en revisión” cuando el aprendiz ya está en `en_revision` aunque no haya intento activo, evitando que el flujo vuelva a gating por cooldown.
+
+**Impacto**
+
+- La UI respeta el estado del aprendiz tras finalizar la evaluación
+- Evita confusión por mensajes de cooldown luego de completar
+- No cambia schema ni RLS
+
+## 2026-01-26 — Audit checkpoint y mapa de avance
+
+**Tipo:** docs  
+**Alcance:** docs
+
+**Resumen**
+Se crea `docs/audit-checkpoint1.md` como mapa vivo de avance y se agrega la regla en AGENTS.md para mantenerlo actualizado en cada hito.
+
+**Impacto**
+
+- Centraliza el estado real del proyecto y el plan de continuidad
+- Complementa el activity log con un mapa operativo de avances
+- No cambia comportamiento del producto ni del schema
+
 ## 2026-01-25 — Lote 8 evaluación final
 
 **Tipo:** feature  
@@ -373,3 +429,143 @@ Se endurece el parseo del output del evaluador de practica para aceptar JSON con
 - Evita 500 cuando el LLM devuelve markdown o contenido extra
 - Devuelve feedback fallback y registra logs truncados para depuracion
 - No cambia esquema ni RLS
+
+## 2026-01-25 — Gating y parse seguro en evaluación final
+
+**Tipo:** fix  
+**Alcance:** backend | ux
+
+**Resumen**
+Se agrega verificación de recorrido completo (ultima unidad) con mensajes amigables en el gating, loading state en UI y se endurece el parseo del evaluador final para evitar crashes por JSON con markdown.
+
+**Impacto**
+
+- Bloquea inicio si faltan unidades o config y muestra motivo claro
+- Evita fallas de parseo del evaluador con fallback seguro
+- No cambia esquema ni RLS
+
+## 2026-01-25 — Logs de gating evaluación final
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+Se agregan logs en modo dev para diagnosticar bloqueos del gating de evaluación final (progreso, unidad y config).
+
+**Impacto**
+
+- Permite detectar rápidamente por qué se bloquea el inicio
+- No cambia el comportamiento en producción
+- No cambia esquema ni RLS
+
+## 2026-01-25 — Log de error en carga de config final
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+Se agrega logging en desarrollo cuando falla la carga de final_evaluation_configs para diagnosticar bloqueos por config_missing.
+
+**Impacto**
+
+- Facilita detectar errores de lectura de config en gating
+- No cambia comportamiento en producción
+- No cambia esquema ni RLS
+
+## 2026-01-26 — RLS para configs de evaluación final (aprendiz)
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se habilita lectura de final_evaluation_configs para el aprendiz del programa correspondiente, evitando bloqueos por config_missing en la UI.
+
+**Impacto**
+
+- El aprendiz puede iniciar evaluación final si cumple gating
+- No expone configs de otros programas
+- No cambia schema ni flujo de aprobación
+
+## 2026-01-26 — Seed aprendiz demo listo para evaluación final
+
+**Tipo:** feature  
+**Alcance:** db
+
+**Resumen**
+Se agrega seed idempotente que deja al aprendiz demo con progreso completo y unidad final activa para habilitar la evaluación final tras db reset.
+
+**Impacto**
+
+- `npx supabase db reset` deja el demo listo para /learner/final-evaluation
+- Evita pasos manuales de actualización en QA
+- No cambia esquema ni RLS
+
+## 2026-01-26 — Derivar intento activo en submit de evaluación final
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+Se elimina la dependencia del attemptId enviado por el cliente y se resuelve el intento activo del aprendiz en servidor para evitar Forbidden por ids stale.
+
+**Impacto**
+
+- Submit de respuestas usa siempre el intento vigente
+- Reduce errores por refresh o sesión desfasada
+- No cambia esquema ni RLS
+
+## 2026-01-26 — Hardening attempt activo en evaluación final
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+Se resuelve el intento activo una sola vez por request y se reutiliza para validar respuestas y finalizar, evitando races por reconsulta.
+
+**Impacto**
+
+- El submit ya no depende de un lookup posterior de intento activo
+- Reduce errores por refresh o cambios de estado
+- No cambia esquema ni RLS
+
+## 2026-01-26 — Fail-loud al insertar respuestas de evaluación final
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+Se agrega logging detallado y mensaje de error amigable cuando falla el insert en final_evaluation_answers.
+
+**Impacto**
+
+- Expone errores reales (RLS/columns) en el flujo de evaluación
+- Facilita depuración sin cambiar schema ni RLS
+- Mantiene comportamiento seguro en producción
+
+## 2026-01-26 — Reuso del client SSR en submit de evaluación final
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+El submit de respuestas usa el Supabase client SSR autenticado (con cookies) para evitar inserts anonimos que fallen por RLS.
+
+**Impacto**
+
+- Inserciones de final_evaluation_answers usan auth.uid() correcto
+- Reduce fallas silenciosas por cliente sin sesion
+- No cambia esquema ni RLS
+
+## 2026-01-26 — Revalidación de ruta en evaluación final
+
+**Tipo:** fix  
+**Alcance:** frontend | backend
+
+**Resumen**
+Se agrega revalidatePath en el submit de evaluación final para refrescar el Server Component y avanzar de pregunta sin refresh manual.
+
+**Impacto**
+
+- La UI avanza a la siguiente pregunta tras enviar respuesta
+- No cambia esquema ni RLS
+- Mantiene el flujo existente de evaluación

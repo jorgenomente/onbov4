@@ -13,6 +13,9 @@
     "db:dictionary": "bash scripts/db-dictionary.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui",
     "lint-staged": "lint-staged",
     "prepare": "husky"
   },

@@ -1,11 +1,8 @@
 import Link from 'next/link';
 
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
-import {
-  canStartFinalEvaluation,
-  startFinalEvaluation,
-} from '../../../lib/ai/final-evaluation-engine';
-import { submitFinalAnswerAction } from './actions';
+import { canStartFinalEvaluation } from '../../../lib/ai/final-evaluation-engine';
+import { startFinalEvaluationAction, submitFinalAnswerAction } from './actions';
 
 export default async function FinalEvaluationPage() {
   const supabase = await getSupabaseServerClient();
@@ -31,6 +28,29 @@ export default async function FinalEvaluationPage() {
     .maybeSingle();
 
   if (!attempt) {
+    const { data: training } = await supabase
+      .from('learner_trainings')
+      .select('status')
+      .eq('learner_id', learnerId)
+      .maybeSingle();
+
+    if (training?.status === 'en_revision') {
+      return (
+        <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-4 px-4 py-6">
+          <h1 className="text-xl font-semibold">Evaluación enviada</h1>
+          <p className="text-sm text-slate-500">
+            Tu evaluación fue enviada. Está siendo revisada por tu referente.
+          </p>
+          <p className="text-sm text-slate-500" data-testid="final-in-review">
+            Estado: en revisión
+          </p>
+          <Link href="/" className="text-sm text-slate-500">
+            Volver
+          </Link>
+        </main>
+      );
+    }
+
     const allowed = await canStartFinalEvaluation(learnerId);
 
     return (
@@ -47,14 +67,10 @@ export default async function FinalEvaluationPage() {
             {allowed.reason}
           </div>
         ) : (
-          <form
-            action={async () => {
-              'use server';
-              await startFinalEvaluation(learnerId);
-            }}
-          >
+          <form action={startFinalEvaluationAction}>
             <button
               type="submit"
+              data-testid="final-start"
               className="w-full rounded-md bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
             >
               Iniciar evaluación final
@@ -89,6 +105,9 @@ export default async function FinalEvaluationPage() {
         <p className="text-sm text-slate-500">
           Tu evaluación fue enviada. Está siendo revisada por tu referente.
         </p>
+        <p className="text-sm text-slate-500" data-testid="final-in-review">
+          Estado: en revisión
+        </p>
         <Link href="/" className="text-sm text-slate-500">
           Volver
         </Link>
@@ -100,7 +119,7 @@ export default async function FinalEvaluationPage() {
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 px-4 py-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Evaluación final</h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500" data-testid="final-progress">
           Pregunta {answered.size + 1} de {questions?.length ?? 0}
         </p>
       </div>
@@ -109,7 +128,12 @@ export default async function FinalEvaluationPage() {
         <p className="text-sm text-slate-500">
           Unidad {nextQuestion.unit_order} · {nextQuestion.question_type}
         </p>
-        <p className="mt-2 text-base text-slate-800">{nextQuestion.prompt}</p>
+        <p
+          className="mt-2 text-base text-slate-800"
+          data-testid="final-question-prompt"
+        >
+          {nextQuestion.prompt}
+        </p>
       </section>
 
       <form
@@ -117,7 +141,6 @@ export default async function FinalEvaluationPage() {
           'use server';
           const text = String(formData.get('answer') ?? '');
           await submitFinalAnswerAction({
-            attemptId: attempt.id,
             questionId: nextQuestion.id,
             text,
           });
@@ -131,11 +154,13 @@ export default async function FinalEvaluationPage() {
           name="answer"
           required
           rows={4}
+          data-testid="final-answer"
           className="w-full rounded-md border border-slate-300 p-2 text-sm"
           placeholder="Escribí tu respuesta..."
         />
         <button
           type="submit"
+          data-testid="final-submit"
           className="rounded-md bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
         >
           Enviar respuesta

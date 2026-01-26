@@ -17,6 +17,32 @@ export async function generateReply(
 ): Promise<GenerateReplyOutput> {
   const provider = process.env.LLM_PROVIDER ?? 'openai';
 
+  if (provider === 'mock') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Mock LLM provider not allowed in production');
+    }
+
+    const expectsJson =
+      input.system.includes('Responde SOLO con JSON') ||
+      input.system.includes('JSON válido') ||
+      input.system.includes('JSON estricto');
+
+    if (expectsJson) {
+      return {
+        text: JSON.stringify({
+          score: 85,
+          verdict: 'pass',
+          strengths: ['Respuesta clara y enfocada'],
+          gaps: [],
+          feedback: 'Buen trabajo. Mantené la claridad y el tono cordial.',
+          doubt_signals: [],
+        }),
+      };
+    }
+
+    return { text: 'Respuesta de prueba (mock).' };
+  }
+
   if (provider === 'openai') {
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_MODEL;

@@ -43,10 +43,11 @@ export default async function ReviewQueuePage() {
         </p>
       </div>
 
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-3" data-testid="review-queue">
         {data.map((learner) => (
           <li
             key={learner.learner_id}
+            data-testid="review-learner-row"
             className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
           >
             <div className="flex flex-col gap-2">

@@ -74,6 +74,7 @@ export default function LoginForm() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              data-testid="login-email"
               className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
               placeholder="tu@email.com"
             />
@@ -88,6 +89,7 @@ export default function LoginForm() {
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              data-testid="login-password"
               className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
               placeholder="••••••••"
             />
@@ -102,6 +104,7 @@ export default function LoginForm() {
           <button
             type="submit"
             disabled={loading}
+            data-testid="login-submit"
             className="flex w-full items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? 'Ingresando...' : 'Ingresar'}
