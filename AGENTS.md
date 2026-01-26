@@ -69,6 +69,22 @@ La IA **NO puede reinterpretar requisitos** ni “mejorarlos”.
 
 ---
 
+## 2.1) DB Documentation (regenerable)
+
+El repositorio mantiene snapshots **regenerables** del schema `public` de Supabase local:
+
+- `docs/db/dictionary.md` → diccionario de datos (tablas, columnas, RLS y policies)
+- `docs/db/schema.public.sql` → dump canónico del schema `public`
+
+**Regla:** estos archivos **no se editan a mano**. Se regeneran desde CLI.
+
+Regeneración obligatoria cuando cambien migraciones, tablas o policies:
+
+- `npm run db:dictionary`
+- `npm run db:dump:schema`
+
+---
+
 ## 3) Guardrails (Reglas estrictas)
 
 ### Prohibido

@@ -9,6 +9,8 @@
     "lint": "eslint",
     "gemini:list-models": "node --import tsx scripts/gemini-list-models.ts",
     "gemini:smoke": "node --import tsx scripts/gemini-smoke.ts",
+    "db:dump:schema": "npx supabase db dump --local --schema public > docs/db/schema.public.sql",
+    "db:dictionary": "bash scripts/db-dictionary.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint-staged": "lint-staged",
