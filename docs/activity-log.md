@@ -777,3 +777,17 @@ Se agrega tabla append-only y RPC server-only para registrar consultas a unidade
 - Infra de logging lista sin exposición directa en cliente
 - RLS por rol/local/org
 - No cambia el flujo de entrenamiento actual
+
+## 2026-01-27 — LLM mock habilitado para dev/QA local
+
+**Tipo:** chore  
+**Alcance:** dev | qa
+
+**Resumen**
+Se configura LLM_PROVIDER=mock en entorno local para evitar dependencia de cuotas externas durante desarrollo y QA.
+
+**Impacto**
+
+- Chat/práctica/evaluación usan respuestas determinísticas en local
+- Producción bloquea explícitamente provider mock
+- No cambia configuración de producción
