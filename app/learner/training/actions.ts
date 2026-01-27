@@ -98,6 +98,7 @@ export async function sendLearnerMessage(
 
   const reply = await generateReply({ system, messages });
 
+  // TODO: Log future-unit questions once a structured signal exists in the model output.
   const { error: insertBotError } = await supabase
     .from('conversation_messages')
     .insert({

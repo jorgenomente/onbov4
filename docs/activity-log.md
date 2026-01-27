@@ -763,3 +763,17 @@ Se implementa /learner/profile con datos del usuario, estado actual y historial 
 - Aprendiz ve identidad, estado y decisiones humanas
 - No se modifica el modelo ni el flujo de entrenamiento
 - Prepara el cierre del Sub‑lote C
+
+## 2026-01-27 — Infra de logging para consultas a unidades futuras
+
+**Tipo:** feature  
+**Alcance:** db | rls | backend
+
+**Resumen**
+Se agrega tabla append-only y RPC server-only para registrar consultas a unidades futuras. El wiring al chat se posterga por falta de señal estructurada.
+
+**Impacto**
+
+- Infra de logging lista sin exposición directa en cliente
+- RLS por rol/local/org
+- No cambia el flujo de entrenamiento actual

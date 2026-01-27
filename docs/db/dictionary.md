@@ -70,6 +70,15 @@
 | knowledge_items                  | title               | text                     | true     |                                    |
 | knowledge_items                  | content             | text                     | true     |                                    |
 | knowledge_items                  | created_at          | timestamp with time zone | true     | now()                              |
+| learner_future_questions         | id                  | uuid                     | true     | gen_random_uuid()                  |
+| learner_future_questions         | learner_id          | uuid                     | true     |                                    |
+| learner_future_questions         | local_id            | uuid                     | true     |                                    |
+| learner_future_questions         | program_id          | uuid                     | true     |                                    |
+| learner_future_questions         | asked_unit_order    | integer                  | true     |                                    |
+| learner_future_questions         | conversation_id     | uuid                     | false    |                                    |
+| learner_future_questions         | message_id          | uuid                     | false    |                                    |
+| learner_future_questions         | question_text       | text                     | true     |                                    |
+| learner_future_questions         | created_at          | timestamp with time zone | true     | now()                              |
 | learner_review_decisions         | id                  | uuid                     | true     | gen_random_uuid()                  |
 | learner_review_decisions         | learner_id          | uuid                     | true     |                                    |
 | learner_review_decisions         | reviewer_id         | uuid                     | true     |                                    |
@@ -353,6 +362,19 @@
 | knowledge_items_select_admin_org   | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                |            |
 | knowledge_items_select_local_roles | SELECT  | (("current_role"() = ANY (ARRAY['referente'::app_role, 'aprendiz'::app_role])) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (local_id = current_local_id()))) |            |
 | knowledge_items_select_superadmin  | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
+
+### learner_future_questions
+
+- RLS: enabled
+
+| policy_name                                                                             | command | using                                                                            | with_check |
+| --------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------- | ---------- |
+| learner_future_questions_select_admin_org                                               | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (EXISTS ( SELECT 1               |            |
+| FROM locals l                                                                           |         |                                                                                  |            |
+| WHERE ((l.id = learner_future_questions.local_id) AND (l.org_id = current_org_id()))))) |         |                                                                                  |            |
+| learner_future_questions_select_aprendiz                                                | SELECT  | (("current_role"() = 'aprendiz'::app_role) AND (learner_id = auth.uid()))        |            |
+| learner_future_questions_select_referente                                               | SELECT  | (("current_role"() = 'referente'::app_role) AND (local_id = current_local_id())) |            |
+| learner_future_questions_select_superadmin                                              | SELECT  | ("current_role"() = 'superadmin'::app_role)                                      |            |
 
 ### learner_review_decisions
 

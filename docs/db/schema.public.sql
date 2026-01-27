@@ -182,6 +182,83 @@ $$;
 ALTER FUNCTION "public"."guard_profiles_update"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."log_future_question"("asked_unit_order" integer, "question_text" "text", "conversation_id" "uuid" DEFAULT NULL::"uuid", "message_id" "uuid" DEFAULT NULL::"uuid") RETURNS "uuid"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    SET "row_security" TO 'off'
+    AS $$
+declare
+  v_learner_id uuid;
+  v_local_id uuid;
+  v_program_id uuid;
+  v_current_unit integer;
+  v_id uuid;
+begin
+  v_learner_id := auth.uid();
+  if v_learner_id is null then
+    raise exception 'Unauthenticated';
+  end if;
+
+  select p.local_id
+    into v_local_id
+  from public.profiles p
+  where p.user_id = v_learner_id
+  limit 1;
+
+  if v_local_id is null then
+    raise exception 'Local not found';
+  end if;
+
+  select lt.program_id, lt.current_unit_order
+    into v_program_id, v_current_unit
+  from public.learner_trainings lt
+  where lt.learner_id = v_learner_id
+  limit 1;
+
+  if v_program_id is null then
+    select lap.program_id
+      into v_program_id
+    from public.local_active_programs lap
+    where lap.local_id = v_local_id
+    limit 1;
+  end if;
+
+  if v_program_id is null or v_current_unit is null then
+    raise exception 'Active training not found';
+  end if;
+
+  if asked_unit_order <= v_current_unit then
+    raise exception 'asked_unit_order must be greater than current_unit_order';
+  end if;
+
+  insert into public.learner_future_questions (
+    learner_id,
+    local_id,
+    program_id,
+    asked_unit_order,
+    conversation_id,
+    message_id,
+    question_text
+  )
+  values (
+    v_learner_id,
+    v_local_id,
+    v_program_id,
+    asked_unit_order,
+    conversation_id,
+    message_id,
+    question_text
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."log_future_question"("asked_unit_order" integer, "question_text" "text", "conversation_id" "uuid", "message_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."prevent_update_delete"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -359,6 +436,22 @@ CREATE TABLE IF NOT EXISTS "public"."knowledge_items" (
 
 
 ALTER TABLE "public"."knowledge_items" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."learner_future_questions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "learner_id" "uuid" NOT NULL,
+    "local_id" "uuid" NOT NULL,
+    "program_id" "uuid" NOT NULL,
+    "asked_unit_order" integer NOT NULL,
+    "conversation_id" "uuid",
+    "message_id" "uuid",
+    "question_text" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."learner_future_questions" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."learner_review_decisions" (
@@ -818,6 +911,11 @@ ALTER TABLE ONLY "public"."knowledge_items"
 
 
 
+ALTER TABLE ONLY "public"."learner_future_questions"
+    ADD CONSTRAINT "learner_future_questions_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."learner_review_decisions"
     ADD CONSTRAINT "learner_review_decisions_pkey" PRIMARY KEY ("id");
 
@@ -985,6 +1083,18 @@ CREATE INDEX "knowledge_items_local_id_idx" ON "public"."knowledge_items" USING 
 
 
 CREATE INDEX "knowledge_items_org_id_idx" ON "public"."knowledge_items" USING "btree" ("org_id");
+
+
+
+CREATE INDEX "learner_future_questions_learner_created_idx" ON "public"."learner_future_questions" USING "btree" ("learner_id", "created_at" DESC);
+
+
+
+CREATE INDEX "learner_future_questions_local_created_idx" ON "public"."learner_future_questions" USING "btree" ("local_id", "created_at" DESC);
+
+
+
+CREATE INDEX "learner_future_questions_program_created_idx" ON "public"."learner_future_questions" USING "btree" ("program_id", "created_at" DESC);
 
 
 
@@ -1238,6 +1348,31 @@ ALTER TABLE ONLY "public"."knowledge_items"
 
 ALTER TABLE ONLY "public"."knowledge_items"
     ADD CONSTRAINT "knowledge_items_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."learner_future_questions"
+    ADD CONSTRAINT "learner_future_questions_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."learner_future_questions"
+    ADD CONSTRAINT "learner_future_questions_learner_id_fkey" FOREIGN KEY ("learner_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."learner_future_questions"
+    ADD CONSTRAINT "learner_future_questions_local_id_fkey" FOREIGN KEY ("local_id") REFERENCES "public"."locals"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."learner_future_questions"
+    ADD CONSTRAINT "learner_future_questions_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "public"."conversation_messages"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."learner_future_questions"
+    ADD CONSTRAINT "learner_future_questions_program_id_fkey" FOREIGN KEY ("program_id") REFERENCES "public"."training_programs"("id") ON DELETE RESTRICT;
 
 
 
@@ -1576,6 +1711,27 @@ CREATE POLICY "knowledge_items_select_local_roles" ON "public"."knowledge_items"
 
 
 CREATE POLICY "knowledge_items_select_superadmin" ON "public"."knowledge_items" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
+ALTER TABLE "public"."learner_future_questions" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "learner_future_questions_select_admin_org" ON "public"."learner_future_questions" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+   FROM "public"."locals" "l"
+  WHERE (("l"."id" = "learner_future_questions"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
+
+
+
+CREATE POLICY "learner_future_questions_select_aprendiz" ON "public"."learner_future_questions" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = "auth"."uid"())));
+
+
+
+CREATE POLICY "learner_future_questions_select_referente" ON "public"."learner_future_questions" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
+
+
+
+CREATE POLICY "learner_future_questions_select_superadmin" ON "public"."learner_future_questions" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
 
 
 
@@ -1963,6 +2119,12 @@ GRANT ALL ON FUNCTION "public"."guard_profiles_update"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."log_future_question"("asked_unit_order" integer, "question_text" "text", "conversation_id" "uuid", "message_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."log_future_question"("asked_unit_order" integer, "question_text" "text", "conversation_id" "uuid", "message_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."log_future_question"("asked_unit_order" integer, "question_text" "text", "conversation_id" "uuid", "message_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."prevent_update_delete"() TO "anon";
 GRANT ALL ON FUNCTION "public"."prevent_update_delete"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."prevent_update_delete"() TO "service_role";
@@ -2032,6 +2194,12 @@ GRANT ALL ON TABLE "public"."final_evaluation_questions" TO "service_role";
 GRANT ALL ON TABLE "public"."knowledge_items" TO "anon";
 GRANT ALL ON TABLE "public"."knowledge_items" TO "authenticated";
 GRANT ALL ON TABLE "public"."knowledge_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."learner_future_questions" TO "anon";
+GRANT ALL ON TABLE "public"."learner_future_questions" TO "authenticated";
+GRANT ALL ON TABLE "public"."learner_future_questions" TO "service_role";
 
 
 
