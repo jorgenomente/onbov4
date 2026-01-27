@@ -6,6 +6,15 @@
 
 | table_name                       | column_name               | tipo                     | not_null | default                            |
 | -------------------------------- | ------------------------- | ------------------------ | -------- | ---------------------------------- |
+| alert_events                     | id                        | uuid                     | true     | gen_random_uuid()                  |
+| alert_events                     | alert_type                | USER-DEFINED             | true     |                                    |
+| alert_events                     | learner_id                | uuid                     | true     |                                    |
+| alert_events                     | local_id                  | uuid                     | true     |                                    |
+| alert_events                     | org_id                    | uuid                     | true     |                                    |
+| alert_events                     | source_table              | text                     | true     |                                    |
+| alert_events                     | source_id                 | uuid                     | true     |                                    |
+| alert_events                     | payload                   | jsonb                    | true     | '{}'::jsonb                        |
+| alert_events                     | created_at                | timestamp with time zone | true     | now()                              |
 | bot_message_evaluations          | id                        | uuid                     | true     | gen_random_uuid()                  |
 | bot_message_evaluations          | message_id                | uuid                     | true     |                                    |
 | bot_message_evaluations          | coherence_score           | numeric                  | false    |                                    |
@@ -310,6 +319,21 @@
 | v_review_queue                   | has_failed_practice       | boolean                  | false    |                                    |
 
 ## RLS + Policies
+
+### alert_events
+
+- RLS: enabled
+
+| policy_name                                                                                                                                                                                                                                                                                                      | command | using                                                                                                                                                                          | with_check |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| alert_events_insert_reviewer                                                                                                                                                                                                                                                                                     | INSERT  | (("current_role"() = ANY (ARRAY['superadmin'::app_role, 'admin_org'::app_role, 'referente'::app_role])) AND (("current_role"() = 'superadmin'::app_role) OR (EXISTS ( SELECT 1 |            |
+| FROM (learner_trainings lt                                                                                                                                                                                                                                                                                       |         |                                                                                                                                                                                |            |
+| JOIN locals l ON ((l.id = lt.local_id)))                                                                                                                                                                                                                                                                         |         |                                                                                                                                                                                |            |
+| WHERE ((lt.learner_id = alert_events.learner_id) AND (alert_events.local_id = lt.local_id) AND (alert_events.org_id = l.org_id) AND ((("current_role"() = 'admin_org'::app_role) AND (l.org_id = current_org_id())) OR (("current_role"() = 'referente'::app_role) AND (lt.local_id = current_local_id())))))))) |         |                                                                                                                                                                                |            |
+| alert_events_select_admin_org                                                                                                                                                                                                                                                                                    | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                   |            |
+| alert_events_select_aprendiz                                                                                                                                                                                                                                                                                     | SELECT  | (("current_role"() = 'aprendiz'::app_role) AND (learner_id = auth.uid()))                                                                                                      |            |
+| alert_events_select_referente                                                                                                                                                                                                                                                                                    | SELECT  | (("current_role"() = 'referente'::app_role) AND (local_id = current_local_id()))                                                                                               |            |
+| alert_events_select_superadmin                                                                                                                                                                                                                                                                                   | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                    |            |
 
 ### bot_message_evaluations
 

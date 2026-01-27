@@ -23,6 +23,18 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
+CREATE TYPE "public"."alert_type" AS ENUM (
+    'review_submitted_v2',
+    'review_rejected_v2',
+    'review_reinforcement_requested_v2',
+    'learner_at_risk',
+    'final_evaluation_submitted'
+);
+
+
+ALTER TYPE "public"."alert_type" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."app_role" AS ENUM (
     'superadmin',
     'admin_org',
@@ -329,6 +341,23 @@ ALTER FUNCTION "public"."set_profile_updated_at"() OWNER TO "postgres";
 SET default_tablespace = '';
 
 SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."alert_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "alert_type" "public"."alert_type" NOT NULL,
+    "learner_id" "uuid" NOT NULL,
+    "local_id" "uuid" NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "source_table" "text" NOT NULL,
+    "source_id" "uuid" NOT NULL,
+    "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "alert_events_payload_object" CHECK (("jsonb_typeof"("payload") = 'object'::"text"))
+);
+
+
+ALTER TABLE "public"."alert_events" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."bot_message_evaluations" (
@@ -1405,6 +1434,11 @@ CREATE OR REPLACE VIEW "public"."v_review_queue" AS
 ALTER VIEW "public"."v_review_queue" OWNER TO "postgres";
 
 
+ALTER TABLE ONLY "public"."alert_events"
+    ADD CONSTRAINT "alert_events_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."bot_message_evaluations"
     ADD CONSTRAINT "bot_message_evaluations_pkey" PRIMARY KEY ("id");
 
@@ -1552,6 +1586,22 @@ ALTER TABLE ONLY "public"."training_units"
 
 ALTER TABLE ONLY "public"."unit_knowledge_map"
     ADD CONSTRAINT "unit_knowledge_map_pkey" PRIMARY KEY ("unit_id", "knowledge_id");
+
+
+
+CREATE INDEX "alert_events_learner_created_at_idx" ON "public"."alert_events" USING "btree" ("learner_id", "created_at" DESC);
+
+
+
+CREATE INDEX "alert_events_local_created_at_idx" ON "public"."alert_events" USING "btree" ("local_id", "created_at" DESC);
+
+
+
+CREATE INDEX "alert_events_org_created_at_idx" ON "public"."alert_events" USING "btree" ("org_id", "created_at" DESC);
+
+
+
+CREATE INDEX "alert_events_type_created_at_idx" ON "public"."alert_events" USING "btree" ("alert_type", "created_at" DESC);
 
 
 
@@ -1795,6 +1845,10 @@ CREATE INDEX "training_units_program_id_idx" ON "public"."training_units" USING 
 
 
 
+CREATE OR REPLACE TRIGGER "trg_alert_events_prevent_update" BEFORE DELETE OR UPDATE ON "public"."alert_events" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_bot_message_evaluations_prevent_update" BEFORE DELETE OR UPDATE ON "public"."bot_message_evaluations" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
 
 
@@ -1852,6 +1906,21 @@ CREATE OR REPLACE TRIGGER "trg_profiles_guard_update" BEFORE UPDATE ON "public".
 
 
 CREATE OR REPLACE TRIGGER "trg_profiles_set_updated_at" BEFORE UPDATE ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."set_profile_updated_at"();
+
+
+
+ALTER TABLE ONLY "public"."alert_events"
+    ADD CONSTRAINT "alert_events_learner_id_fkey" FOREIGN KEY ("learner_id") REFERENCES "public"."profiles"("user_id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."alert_events"
+    ADD CONSTRAINT "alert_events_local_id_fkey" FOREIGN KEY ("local_id") REFERENCES "public"."locals"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."alert_events"
+    ADD CONSTRAINT "alert_events_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT;
 
 
 
@@ -2122,6 +2191,32 @@ ALTER TABLE ONLY "public"."unit_knowledge_map"
 
 ALTER TABLE ONLY "public"."unit_knowledge_map"
     ADD CONSTRAINT "unit_knowledge_map_unit_id_fkey" FOREIGN KEY ("unit_id") REFERENCES "public"."training_units"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE "public"."alert_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "alert_events_insert_reviewer" ON "public"."alert_events" FOR INSERT WITH CHECK ((("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
+   FROM ("public"."learner_trainings" "lt"
+     JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+  WHERE (("lt"."learner_id" = "alert_events"."learner_id") AND ("alert_events"."local_id" = "lt"."local_id") AND ("alert_events"."org_id" = "l"."org_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"())))))))));
+
+
+
+CREATE POLICY "alert_events_select_admin_org" ON "public"."alert_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
+
+
+
+CREATE POLICY "alert_events_select_aprendiz" ON "public"."alert_events" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = "auth"."uid"())));
+
+
+
+CREATE POLICY "alert_events_select_referente" ON "public"."alert_events" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
+
+
+
+CREATE POLICY "alert_events_select_superadmin" ON "public"."alert_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
 
 
 
@@ -2775,6 +2870,11 @@ GRANT ALL ON FUNCTION "public"."set_learner_training_updated_at"() TO "service_r
 GRANT ALL ON FUNCTION "public"."set_profile_updated_at"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_profile_updated_at"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_profile_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."alert_events" TO "service_role";
+GRANT SELECT,INSERT ON TABLE "public"."alert_events" TO "authenticated";
 
 
 

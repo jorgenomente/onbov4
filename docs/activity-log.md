@@ -1046,3 +1046,31 @@ Se agrega un bloque “Validación v2 (interna)” en el detalle de revisión co
 - Referente: /referente/review/[learnerId] -> enviar validación v2 y verla en historial
 - Aprendiz: no puede acceder a /referente/review
 - Botones v1 (aprobar/refuerzo) siguen funcionando
+
+## 2026-01-27 — Sub-lote M.1: alert_events (DB + RLS)
+
+**Tipo:** feature  
+**Alcance:** db | rls | docs
+
+**Resumen**
+Se agrega `alert_events` append-only con enum `alert_type`, RLS estricta y indices para eventos alertables sin emitir notificaciones.
+
+**Impacto**
+
+- Infra DB para registrar eventos auditables por org/local/learner
+- SELECT scope por rol y tenant; INSERT server-only via RLS
+- Sin wiring ni UI todavía (M.2/M.3)
+
+## 2026-01-27 — Sub-lote M.1.1: hardening alert_events
+
+**Tipo:** fix  
+**Alcance:** db | rls | docs
+
+**Resumen**
+Se ajusta la FK de `alert_events.learner_id` para evitar cascade y se endurece la policy INSERT para asegurar coherencia de org/local con el learner real.
+
+**Impacto**
+
+- Protege historial auditado ante borrados accidentales de profiles
+- Evita snapshots incoherentes (org/local) en inserts server-only
+- Sin cambios de UI ni wiring
