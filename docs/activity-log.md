@@ -749,3 +749,17 @@ npx playwright test e2e/learner-progress.spec.ts
 
 **Estado**
 Sub-lotes A+B certificados.
+
+## 2026-01-27 — Perfil del aprendiz (read-only)
+
+**Tipo:** feature  
+**Alcance:** frontend
+
+**Resumen**
+Se implementa /learner/profile con datos del usuario, estado actual y historial de decisiones en modo solo lectura.
+
+**Impacto**
+
+- Aprendiz ve identidad, estado y decisiones humanas
+- No se modifica el modelo ni el flujo de entrenamiento
+- Prepara el cierre del Sub‑lote C
