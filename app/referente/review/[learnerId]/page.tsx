@@ -50,6 +50,13 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
     .order('unit_order', { ascending: true })
     .order('signal', { ascending: true });
 
+  const { data: unitCoverageData, error: unitCoverageError } = await supabase
+    .from('v_local_unit_coverage_30d')
+    .select(
+      'unit_order, avg_practice_score, avg_final_score, practice_fail_rate, final_fail_rate, top_gap',
+    )
+    .order('unit_order', { ascending: true });
+
   const { data: learnerProfile } = await supabase
     .from('profiles')
     .select('full_name')
@@ -67,6 +74,7 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
     evaluationSummaryError ||
     wrongAnswersError ||
     doubtSignalsError ||
+    unitCoverageError ||
     !evidence
   ) {
     return (
@@ -136,6 +144,16 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
       total_count: number;
       last_seen_at: string | null;
       sources: string[] | null;
+    }>) ?? [];
+
+  const unitCoverage =
+    (unitCoverageData as Array<{
+      unit_order: number;
+      avg_practice_score: number | null;
+      avg_final_score: number | null;
+      practice_fail_rate: number | null;
+      final_fail_rate: number | null;
+      top_gap: string | null;
     }>) ?? [];
 
   const summaryByAttempt = evaluationSummary.reduce(
@@ -254,6 +272,66 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
                 </ul>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-700">
+          Cobertura (30 días)
+        </h2>
+        {unitCoverage.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">
+            No hay cobertura registrada.
+          </p>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="min-w-full text-left text-xs text-slate-600">
+              <thead className="text-[11px] text-slate-400 uppercase">
+                <tr>
+                  <th className="py-2 pr-4">Unidad</th>
+                  <th className="py-2 pr-4">Avg práctica</th>
+                  <th className="py-2 pr-4">Avg final</th>
+                  <th className="py-2 pr-4">Fail práctica</th>
+                  <th className="py-2 pr-4">Fail final</th>
+                  <th className="py-2 pr-4">Top gap</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unitCoverage.map((row) => (
+                  <tr key={`unit-${row.unit_order}`} className="border-t">
+                    <td className="py-2 pr-4 text-slate-700">
+                      {row.unit_order}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {row.avg_practice_score === null
+                        ? '—'
+                        : Math.round(row.avg_practice_score)}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {row.avg_final_score === null
+                        ? '—'
+                        : Math.round(row.avg_final_score)}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {row.practice_fail_rate === null
+                        ? '—'
+                        : (row.practice_fail_rate * 100).toFixed(1)}
+                      %
+                    </td>
+                    <td className="py-2 pr-4">
+                      {row.final_fail_rate === null
+                        ? '—'
+                        : (row.final_fail_rate * 100).toFixed(1)}
+                      %
+                    </td>
+                    <td className="py-2 pr-4 text-slate-500">
+                      {row.top_gap ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

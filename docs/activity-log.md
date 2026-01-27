@@ -915,3 +915,24 @@ Se agregan views read-only tenant-scoped para métricas accionables del referent
 - Smoke OK: v_local_top_gaps_30d / v_local_learner_risk_30d / v_local_unit_coverage_30d
 - Denominador top_gaps validado (percent_learners_affected=50% con 2 learners activos)
 - RLS local OK (Referente A forzando Local B: 0 filas)
+
+## 2026-01-27 — Fase 3 Sub‑lote J: UI Referente métricas (lectura)
+
+**Tipo:** feature  
+**Alcance:** frontend | ux | qa
+
+**Resumen**
+Se agregan bloques de métricas (30 días) en /referente/review y cobertura por unidad en /referente/review/[learnerId], consumiendo views de métricas accionables en RSC.
+
+**Impacto**
+
+- Referente ve top gaps y riesgo por aprendiz sin acciones nuevas
+- Cobertura por unidad visible en el detalle
+- QA mínima ejecutada para Sub‑lote J
+
+**Checks manuales mínimos**
+
+- npx supabase db reset
+- npm run lint
+- npm run build
+- npm run e2e -- referente-metrics.spec.ts
