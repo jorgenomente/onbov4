@@ -1,5 +1,8 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+
 import { sendDecisionEmail } from '../../../lib/email/sendDecisionEmail';
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
 
@@ -110,15 +113,18 @@ export async function approveLearner(input: DecisionInput) {
     decisionType: 'approved',
   });
 
+  revalidatePath('/referente/review');
+  revalidatePath(`/referente/review/${input.learnerId}`);
+
   if (emailResult.status === 'failed') {
-    return { success: true, email: 'failed', emailError: emailResult.error };
+    redirect(`/referente/review/${input.learnerId}?email=failed`);
   }
 
   if (emailResult.status === 'skipped') {
-    return { success: true, email: 'skipped' };
+    redirect(`/referente/review/${input.learnerId}?email=skipped`);
   }
 
-  return { success: true, email: 'sent' };
+  redirect(`/referente/review/${input.learnerId}?email=sent`);
 }
 
 export async function requestReinforcement(input: DecisionInput) {
@@ -180,13 +186,16 @@ export async function requestReinforcement(input: DecisionInput) {
     decisionType: 'needs_reinforcement',
   });
 
+  revalidatePath('/referente/review');
+  revalidatePath(`/referente/review/${input.learnerId}`);
+
   if (emailResult.status === 'failed') {
-    return { success: true, email: 'failed', emailError: emailResult.error };
+    redirect(`/referente/review/${input.learnerId}?email=failed`);
   }
 
   if (emailResult.status === 'skipped') {
-    return { success: true, email: 'skipped' };
+    redirect(`/referente/review/${input.learnerId}?email=skipped`);
   }
 
-  return { success: true, email: 'sent' };
+  redirect(`/referente/review/${input.learnerId}?email=sent`);
 }

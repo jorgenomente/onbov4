@@ -653,3 +653,17 @@ Se convierten current_profile/current_role/current_org_id/current_local_id en SE
 - Evita errores de stack depth al consultar tablas con RLS
 - Destraba gating de evaluación final y colas de revisión
 - Mantiene aislamiento por rol/org/local
+
+## 2026-01-27 — Revalidación inmediata tras decisiones de revisión
+
+**Tipo:** fix  
+**Alcance:** frontend | backend
+
+**Resumen**
+Las acciones de aprobar/pedir refuerzo revalidan rutas y redirigen al detalle para reflejar el historial sin refresh manual.
+
+**Impacto**
+
+- Historial se actualiza al instante en /referente/review/[id]
+- La cola de revisión también se revalida
+- No cambia lógica de decisiones ni emails
