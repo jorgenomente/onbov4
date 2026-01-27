@@ -723,3 +723,29 @@ Se implementa /learner/progress con estado, avance y lista de unidades. Se agreg
 - Aprendiz puede ver progreso y estado actual
 - Repaso disponible solo para unidades completadas
 - No modifica entrenamiento ni métricas
+
+## 2026-01-27 — E2E smoke Sub-lote A+B (UX Aprendiz)
+
+**Tipo:** qa  
+**Alcance:** frontend | e2e
+
+**Resumen**
+E2E Playwright exitoso para Sub-lotes A y B:
+
+- navegación Aprendiz
+- Progreso
+- Repaso lectura-only
+
+**Comando**
+E2E_LEARNER_EMAIL=aprendiz@demo.com  
+E2E_LEARNER_PASSWORD=prueba123  
+E2E_REFERENTE_EMAIL=referente@demo.com  
+E2E_REFERENTE_PASSWORD=prueba123  
+npx playwright test e2e/learner-progress.spec.ts
+
+**Resultado**
+
+- learner-progress.spec.ts pasó ✅
+
+**Estado**
+Sub-lotes A+B certificados.
