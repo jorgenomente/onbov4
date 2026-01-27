@@ -121,7 +121,7 @@ Cada checkpoint tiene:
 
 ---
 
-### Fase 1 — UX Aprendiz completo
+### Fase 1 — UX Aprendiz completo (CERRADA)
 
 **Objetivo**: cumplir navegación Aprendiz definida en el Maestro.
 
@@ -238,33 +238,29 @@ Cada checkpoint tiene:
 
 ## 5) Checkpoint actual
 
-**Checkpoint actual:** CP‑0 (Estabilización MVP+)
+**Checkpoint actual:** CP‑1 (Evidencias completas para Referente/Admin)
 
 **En curso**
 
-- Ajustes RLS y helpers (ya aplicados).
-- Historial visible de decisiones.
-- Reintentos LLM.
+- Definición de views de evidencia avanzada.
+- UI de revisión con evidencia profunda.
 
 **Siguiente inmediato**
 
-- Completar smoke tests oficiales.
-- Verificación end‑to‑end con aprendiz + referente.
+- Iniciar Fase 2 según roadmap.
 
 ---
 
-## 6) Qué sigue (primer lote post‑MVP sugerido)
+## 6) Qué sigue (próximo lote post‑MVP)
 
-**LOTE Post‑MVP 1 — UX Aprendiz completa**
+**LOTE Post‑MVP 2 — Evidencias completas para Referente/Admin**
 
-- Crear `/learner/progress` + `/learner/profile`.
-- Agregar modo repaso (lectura + mini prácticas).
-- Añadir logging de consultas a unidades futuras.
+- Views de evidencia avanzada (summary, wrong answers, dudas).
+- UI de revisión ampliada.
 
 **Checklist de cierre**
 
-- Tabs completas visibles.
-- Repaso funcional sin modificar progreso.
+- Referente toma decisión con evidencia completa.
 - `npm run build` + `npm run lint` OK.
 
 ---

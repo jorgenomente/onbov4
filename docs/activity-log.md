@@ -791,3 +791,17 @@ Se configura LLM_PROVIDER=mock en entorno local para evitar dependencia de cuota
 - Chat/práctica/evaluación usan respuestas determinísticas en local
 - Producción bloquea explícitamente provider mock
 - No cambia configuración de producción
+
+## 2026-01-27 — Cierre Post‑MVP 1 (UX Aprendiz completa)
+
+**Tipo:** docs  
+**Alcance:** docs
+
+**Resumen**
+Se marca como cerrado el Lote Post‑MVP 1 en el roadmap y se actualiza el checkpoint de auditoría con el estado final de los sub‑lotes A‑D.
+
+**Impacto**
+
+- Roadmap actualizado con próximo checkpoint (Fase 2)
+- Audit checkpoint refleja Post‑MVP 1 como hecho
+- No cambia comportamiento funcional

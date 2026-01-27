@@ -90,6 +90,14 @@ Este mapa es el checkpoint que se actualiza al avanzar. Cada ítem debe moverse 
 
 ### 6) Cierre MVP (pendiente)
 
+### 7) Post‑MVP 1 — UX Aprendiz completa (Hecho — 2026-01-27)
+
+- Tabs Aprendiz (Entrenamiento/Progreso/Perfil) completadas.
+- /learner/progress + repaso lectura-only completado.
+- /learner/profile read-only completado.
+- Logging de consultas a unidades futuras (DB + RLS + RPC) listo.
+- E2E/Smoke certificados para A, B, C y D.
+
 - Actualizar `docs/activity-log.md` con cierre de lote de hardening.
 - Documentar cómo correr el smoke test en 1 script o guía.
 - Dejar el producto listo para demo con datos reales controlados.
