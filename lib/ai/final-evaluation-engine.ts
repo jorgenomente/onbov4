@@ -1,5 +1,7 @@
 import 'server-only';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 import { getSupabaseServerClient } from '../server/supabase';
 import { getKnowledgeForContext } from './context-builder';
 import { detectDoubtSignals } from './practice-evaluator';
@@ -25,26 +27,90 @@ type FinalQuestion = {
 };
 
 function parseEvaluationJson(raw: string) {
-  const parsed = JSON.parse(raw) as {
-    score: number;
-    verdict: 'pass' | 'partial' | 'fail';
-    strengths: string[];
-    gaps: string[];
-    feedback: string;
-    doubt_signals: string[];
+  const defaultEvaluation = {
+    score: 0,
+    verdict: 'fail' as const,
+    strengths: [],
+    gaps: ['No se pudo interpretar la evaluación automática.'],
+    feedback:
+      'No pude evaluar tu respuesta en este momento. Intentá nuevamente.',
+    doubt_signals: [],
   };
 
-  if (
-    typeof parsed.score !== 'number' ||
-    parsed.score < 0 ||
-    parsed.score > 100 ||
-    !['pass', 'partial', 'fail'].includes(parsed.verdict) ||
-    !Array.isArray(parsed.strengths) ||
-    !Array.isArray(parsed.gaps) ||
-    typeof parsed.feedback !== 'string' ||
-    !Array.isArray(parsed.doubt_signals)
-  ) {
-    throw new Error('Invalid evaluation format');
+  const truncate = (value: string, max = 500) =>
+    value.length > max ? `${value.slice(0, max)}…` : value;
+
+  const extractFromFence = (value: string) => {
+    const jsonFence = value.match(/```json\s*([\s\S]*?)\s*```/i);
+    if (jsonFence?.[1]) return jsonFence[1].trim();
+    const anyFence = value.match(/```\s*([\s\S]*?)\s*```/i);
+    if (anyFence?.[1]) return anyFence[1].trim();
+    return null;
+  };
+
+  const extractFromBraces = (value: string) => {
+    const start = value.indexOf('{');
+    const end = value.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      return value.slice(start, end + 1).trim();
+    }
+    return null;
+  };
+
+  const rawTrimmed = raw.trim();
+  let sanitized = rawTrimmed;
+  const fenced = extractFromFence(rawTrimmed);
+  if (fenced) {
+    sanitized = fenced;
+  }
+
+  let parsed: typeof defaultEvaluation | null = null;
+  try {
+    parsed = JSON.parse(sanitized) as typeof defaultEvaluation;
+  } catch (error) {
+    const braced = extractFromBraces(rawTrimmed);
+    if (braced) {
+      sanitized = braced;
+      try {
+        parsed = JSON.parse(sanitized) as typeof defaultEvaluation;
+      } catch (innerError) {
+        console.error('final-evaluation: parse failed', {
+          error: innerError instanceof Error ? innerError.message : innerError,
+          raw: truncate(rawTrimmed),
+          sanitized: truncate(sanitized),
+        });
+        return defaultEvaluation;
+      }
+    } else {
+      console.error('final-evaluation: parse failed', {
+        error: error instanceof Error ? error.message : error,
+        raw: truncate(rawTrimmed),
+        sanitized: truncate(sanitized),
+      });
+      return defaultEvaluation;
+    }
+  }
+
+  if (!parsed) {
+    return defaultEvaluation;
+  }
+
+  const isValid =
+    typeof parsed.score === 'number' &&
+    parsed.score >= 0 &&
+    parsed.score <= 100 &&
+    ['pass', 'partial', 'fail'].includes(parsed.verdict) &&
+    Array.isArray(parsed.strengths) &&
+    Array.isArray(parsed.gaps) &&
+    typeof parsed.feedback === 'string' &&
+    Array.isArray(parsed.doubt_signals);
+
+  if (!isValid) {
+    console.error('final-evaluation: invalid format', {
+      raw: truncate(rawTrimmed),
+      sanitized: truncate(sanitized),
+    });
+    return defaultEvaluation;
   }
 
   return parsed;
@@ -66,15 +132,35 @@ async function loadFinalConfig(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   programId: string,
 ): Promise<FinalConfig> {
-  const { data, error } = await supabase
+  const baseQuery = supabase
     .from('final_evaluation_configs')
     .select(
       'id, program_id, total_questions, roleplay_ratio, min_global_score, must_pass_units, questions_per_unit, max_attempts, cooldown_hours',
     )
     .eq('program_id', programId)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  const { data, error } = await baseQuery.maybeSingle();
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('final-evaluation config lookup', {
+      programId,
+      filters: { program_id: programId },
+      data,
+      error,
+    });
+    const { count, error: countError } = await supabase
+      .from('final_evaluation_configs')
+      .select('id', { count: 'exact', head: true })
+      .eq('program_id', programId);
+    console.info('final-evaluation config count', {
+      programId,
+      filters: { program_id: programId },
+      count,
+      countError,
+    });
+  }
 
   if (error || !data) {
     throw new Error('Final evaluation config not found');
@@ -85,6 +171,10 @@ async function loadFinalConfig(
 
 export async function canStartFinalEvaluation(learnerId: string) {
   const supabase = await requireLearner(learnerId);
+  const logBlock = (reason: string, details: Record<string, unknown>) => {
+    if (process.env.NODE_ENV === 'production') return;
+    console.info('final-evaluation gating blocked', { reason, ...details });
+  };
 
   const { data: training, error: trainingError } = await supabase
     .from('learner_trainings')
@@ -93,14 +183,66 @@ export async function canStartFinalEvaluation(learnerId: string) {
     .maybeSingle();
 
   if (trainingError || !training) {
+    logBlock('training_not_found', { learnerId, trainingError });
     return { allowed: false, reason: 'Entrenamiento no encontrado' };
   }
 
-  if (Number(training.progress_percent) < 100) {
+  const progressPercent = Number(training.progress_percent ?? 0);
+  if (!Number.isFinite(progressPercent) || progressPercent < 100) {
+    logBlock('progress_incomplete', {
+      learnerId,
+      programId: training.program_id,
+      progressPercent,
+      currentUnitOrder: training.current_unit_order,
+    });
     return { allowed: false, reason: 'Completa el entrenamiento primero' };
   }
 
-  const config = await loadFinalConfig(supabase, training.program_id);
+  const { data: lastUnit, error: unitError } = await supabase
+    .from('training_units')
+    .select('unit_order')
+    .eq('program_id', training.program_id)
+    .order('unit_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (unitError || !lastUnit) {
+    logBlock('units_missing', {
+      learnerId,
+      programId: training.program_id,
+      progressPercent,
+      currentUnitOrder: training.current_unit_order,
+    });
+    return { allowed: false, reason: 'No hay unidades configuradas' };
+  }
+
+  if (training.current_unit_order < lastUnit.unit_order) {
+    logBlock('unit_incomplete', {
+      learnerId,
+      programId: training.program_id,
+      progressPercent,
+      currentUnitOrder: training.current_unit_order,
+      maxUnitOrder: lastUnit.unit_order,
+    });
+    return { allowed: false, reason: 'Completa el recorrido primero' };
+  }
+
+  let config: FinalConfig;
+  try {
+    config = await loadFinalConfig(supabase, training.program_id);
+  } catch {
+    logBlock('config_missing', {
+      learnerId,
+      programId: training.program_id,
+      progressPercent,
+      currentUnitOrder: training.current_unit_order,
+      maxUnitOrder: lastUnit.unit_order,
+    });
+    return {
+      allowed: false,
+      reason: 'No hay configuración de evaluación final disponible',
+    };
+  }
 
   const { data: lastAttempt } = await supabase
     .from('final_evaluation_attempts')
@@ -111,10 +253,20 @@ export async function canStartFinalEvaluation(learnerId: string) {
     .maybeSingle();
 
   if (lastAttempt?.status === 'blocked') {
+    logBlock('attempts_blocked', {
+      learnerId,
+      programId: training.program_id,
+      attemptNumber: lastAttempt.attempt_number,
+    });
     return { allowed: false, reason: 'Intentos bloqueados' };
   }
 
   if (lastAttempt?.status === 'in_progress') {
+    logBlock('attempt_in_progress', {
+      learnerId,
+      programId: training.program_id,
+      attemptNumber: lastAttempt.attempt_number,
+    });
     return { allowed: false, reason: 'Evaluación en curso' };
   }
 
@@ -122,6 +274,12 @@ export async function canStartFinalEvaluation(learnerId: string) {
     lastAttempt?.attempt_number &&
     lastAttempt.attempt_number >= config.max_attempts
   ) {
+    logBlock('attempts_maxed', {
+      learnerId,
+      programId: training.program_id,
+      attemptNumber: lastAttempt.attempt_number,
+      maxAttempts: config.max_attempts,
+    });
     return { allowed: false, reason: 'Se alcanzó el máximo de intentos' };
   }
 
@@ -130,7 +288,17 @@ export async function canStartFinalEvaluation(learnerId: string) {
     const now = Date.now();
     const diffHours = (now - endedAt) / (1000 * 60 * 60);
     if (diffHours < config.cooldown_hours) {
-      return { allowed: false, reason: 'Cooldown activo' };
+      const remaining = Math.ceil(config.cooldown_hours - diffHours);
+      logBlock('cooldown_active', {
+        learnerId,
+        programId: training.program_id,
+        attemptNumber: lastAttempt.attempt_number,
+        remainingHours: remaining,
+      });
+      return {
+        allowed: false,
+        reason: `Debés esperar ${remaining}h para reintentar`,
+      };
     }
   }
 
@@ -155,7 +323,12 @@ export async function startFinalEvaluation(learnerId: string) {
     throw new Error('Entrenamiento no encontrado');
   }
 
-  const config = await loadFinalConfig(supabase, training.program_id);
+  let config: FinalConfig;
+  try {
+    config = await loadFinalConfig(supabase, training.program_id);
+  } catch {
+    throw new Error('No hay configuración de evaluación final disponible');
+  }
 
   const { data: lastAttempt } = await supabase
     .from('final_evaluation_attempts')
@@ -259,22 +432,39 @@ export async function startFinalEvaluation(learnerId: string) {
 }
 
 export async function submitFinalAnswer(input: {
+  supabase: SupabaseClient;
   attemptId: string;
   questionId: string;
   learnerAnswer: string;
 }) {
-  const supabase = await getSupabaseServerClient();
+  const supabase = input.supabase;
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user?.id) {
     throw new Error('Unauthenticated');
   }
 
+  const { data: attempt, error: attemptError } = await supabase
+    .from('final_evaluation_attempts')
+    .select('id, learner_id, program_id, status')
+    .eq('id', input.attemptId)
+    .maybeSingle();
+
+  if (attemptError || !attempt) {
+    throw new Error('Final evaluation attempt not found');
+  }
+
+  if (attempt.learner_id !== userData.user.id) {
+    throw new Error('Forbidden');
+  }
+
+  if (attempt.status !== 'in_progress') {
+    throw new Error('Attempt is not active');
+  }
+
   const { data: question, error: questionError } = await supabase
     .from('final_evaluation_questions')
-    .select(
-      'id, attempt_id, unit_order, prompt, final_evaluation_attempts(learner_id, program_id, status)',
-    )
+    .select('id, attempt_id, unit_order, prompt')
     .eq('id', input.questionId)
     .maybeSingle();
 
@@ -282,20 +472,16 @@ export async function submitFinalAnswer(input: {
     throw new Error('Question not found');
   }
 
-  const attempts = question.final_evaluation_attempts as
-    | { learner_id: string; program_id: string; status: string }[]
-    | null;
-  const attempt = attempts?.[0] ?? null;
-
-  if (!attempt || attempt.learner_id !== userData.user.id) {
-    throw new Error('Forbidden');
-  }
-
-  if (attempt.status !== 'in_progress') {
-    throw new Error('Attempt is not active');
-  }
-  if (question.attempt_id !== input.attemptId) {
+  if (question.attempt_id !== attempt.id) {
     throw new Error('Invalid attempt');
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('final-eval submit debug', {
+      attemptId: attempt.id,
+      questionId: input.questionId,
+      questionAttemptId: question.attempt_id,
+    });
   }
 
   const { data: answer, error: answerError } = await supabase
@@ -308,7 +494,13 @@ export async function submitFinalAnswer(input: {
     .maybeSingle();
 
   if (answerError || !answer) {
-    throw new Error('Failed to store answer');
+    console.error('final_evaluation_answers insert failed', {
+      error: answerError,
+      questionId: question.id,
+      attemptId: attempt.id,
+      learnerId: userData.user.id,
+    });
+    throw new Error('No se pudo guardar tu respuesta. Reintentá.');
   }
 
   const { data: unit, error: unitError } = await supabase
@@ -326,7 +518,7 @@ export async function submitFinalAnswer(input: {
 
   const evaluationPrompt =
     `Evaluá la respuesta del aprendiz.\n` +
-    `Reglas:\n- Solo usa el contexto provisto.\n- Responde JSON estricto: {"score":number,"verdict":"pass|partial|fail","strengths":string[],"gaps":string[],"feedback":string,"doubt_signals":string[]}\n\n` +
+    `Reglas:\n- Solo usa el contexto provisto.\n- Responde SOLO con JSON válido. Sin markdown, sin backticks, sin texto extra.\n- Responde JSON estricto: {"score":number,"verdict":"pass|partial|fail","strengths":string[],"gaps":string[],"feedback":string,"doubt_signals":string[]}\n\n` +
     `Pregunta: ${question.prompt}\n` +
     `Unidad: ${unit.title}\n` +
     `Objetivos: ${JSON.stringify(unit.objectives ?? [])}\n` +

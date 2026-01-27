@@ -1,4 +1,7 @@
 import ChatClient from './ChatClient';
+import ReviewHistory, {
+  type ReviewDecision,
+} from '../../../components/ReviewHistory';
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
 
 type ChatMessage = {
@@ -26,6 +29,12 @@ export default async function LearnerTrainingPage() {
       'program_name, current_unit_order, current_unit_title, progress_percent',
     )
     .maybeSingle();
+
+  const { data: reviewDecisions } = await supabase
+    .from('learner_review_decisions')
+    .select('id, decision, reason, reviewer_name, created_at')
+    .eq('learner_id', userData.user.id)
+    .order('created_at', { ascending: false });
 
   const { data: activeConversation, error: conversationError } = await supabase
     .from('v_learner_active_conversation')
@@ -85,6 +94,11 @@ export default async function LearnerTrainingPage() {
             : 'Seguí las indicaciones del bot para avanzar.'}
         </p>
       </header>
+
+      <ReviewHistory
+        decisions={reviewDecisions as ReviewDecision[] | null}
+        title="Historial de decisiones"
+      />
 
       <ChatClient
         initialMessages={initialMessages}

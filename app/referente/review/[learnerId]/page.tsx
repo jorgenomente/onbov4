@@ -4,6 +4,9 @@ import {
   approveLearner,
   requestReinforcement,
 } from '../../../../app/referente/review/actions';
+import ReviewHistory, {
+  type ReviewDecision,
+} from '../../../../components/ReviewHistory';
 import { getSupabaseServerClient } from '../../../../lib/server/supabase';
 
 type ReviewPageProps = {
@@ -25,6 +28,12 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
     .select('full_name')
     .eq('user_id', learnerId)
     .maybeSingle();
+
+  const { data: reviewDecisions } = await supabase
+    .from('learner_review_decisions')
+    .select('id, decision, reason, reviewer_name, created_at')
+    .eq('learner_id', learnerId)
+    .order('created_at', { ascending: false });
 
   if (evidenceError || !evidence) {
     return (
@@ -81,6 +90,11 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
         </h1>
         <p className="text-sm text-slate-500">Evidencias y decisión final.</p>
       </div>
+
+      <ReviewHistory
+        decisions={reviewDecisions as ReviewDecision[] | null}
+        compact={false}
+      />
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-700">

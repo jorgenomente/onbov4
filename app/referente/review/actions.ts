@@ -17,7 +17,7 @@ async function getReviewerProfile() {
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('user_id, role, local_id, org_id')
+    .select('user_id, role, local_id, org_id, full_name')
     .eq('user_id', userData.user.id)
     .maybeSingle();
 
@@ -29,7 +29,12 @@ async function getReviewerProfile() {
     throw new Error('Forbidden');
   }
 
-  return { supabase, reviewerId: profile.user_id, role: profile.role };
+  return {
+    supabase,
+    reviewerId: profile.user_id,
+    reviewerName: profile.full_name ?? 'Referente',
+    role: profile.role,
+  };
 }
 
 async function loadLearnerTraining(
@@ -55,7 +60,7 @@ export async function approveLearner(input: DecisionInput) {
     throw new Error('Reason is required');
   }
 
-  const { supabase, reviewerId } = await getReviewerProfile();
+  const { supabase, reviewerId, reviewerName } = await getReviewerProfile();
   const learnerTraining = await loadLearnerTraining(supabase, input.learnerId);
 
   const { data: decisionRecord, error: decisionError } = await supabase
@@ -65,12 +70,16 @@ export async function approveLearner(input: DecisionInput) {
       reviewer_id: reviewerId,
       decision: 'approved',
       reason,
+      reviewer_name: reviewerName,
     })
     .select('id')
     .maybeSingle();
 
   if (decisionError || !decisionRecord) {
-    throw new Error('Failed to store decision');
+    console.error('approveLearner: insert decision failed', decisionError);
+    throw new Error(
+      `Failed to store decision${decisionError?.message ? `: ${decisionError.message}` : ''}`,
+    );
   }
 
   const { error: transitionError } = await supabase
@@ -118,7 +127,7 @@ export async function requestReinforcement(input: DecisionInput) {
     throw new Error('Reason is required');
   }
 
-  const { supabase, reviewerId } = await getReviewerProfile();
+  const { supabase, reviewerId, reviewerName } = await getReviewerProfile();
   const learnerTraining = await loadLearnerTraining(supabase, input.learnerId);
 
   const { data: decisionRecord, error: decisionError } = await supabase
@@ -128,12 +137,19 @@ export async function requestReinforcement(input: DecisionInput) {
       reviewer_id: reviewerId,
       decision: 'needs_reinforcement',
       reason,
+      reviewer_name: reviewerName,
     })
     .select('id')
     .maybeSingle();
 
   if (decisionError || !decisionRecord) {
-    throw new Error('Failed to store decision');
+    console.error(
+      'requestReinforcement: insert decision failed',
+      decisionError,
+    );
+    throw new Error(
+      `Failed to store decision${decisionError?.message ? `: ${decisionError.message}` : ''}`,
+    );
   }
 
   const { error: transitionError } = await supabase

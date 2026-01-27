@@ -569,3 +569,87 @@ Se agrega revalidatePath en el submit de evaluación final para refrescar el Ser
 - La UI avanza a la siguiente pregunta tras enviar respuesta
 - No cambia esquema ni RLS
 - Mantiene el flujo existente de evaluación
+
+## 2026-01-26 — Seed práctica demo unidad 2 (local)
+
+**Tipo:** fix  
+**Alcance:** db
+
+**Resumen**
+Se agrega un escenario de práctica para la unidad 2 del programa demo en el local demo, evitando errores por ausencia de escenarios.
+
+**Impacto**
+
+- El botón de práctica ya encuentra un escenario válido
+- No cambia esquema ni RLS
+- Mantiene lógica append-only
+
+## 2026-01-27 — Fix RLS recursión en decisiones de revisión
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se elimina la policy auto-referencial en learner_review_decisions que generaba recursión infinita y se reemplaza por una policy simple para aprendiz.
+
+**Impacto**
+
+- Permite insertar decisiones y leer decisiones propias sin error de recursión
+- No cambia lógica de negocio ni estados
+- Mantiene alcance por rol
+
+## 2026-01-27 — Historial visible de decisiones de revisión
+
+**Tipo:** feature  
+**Alcance:** frontend | backend | db | rls
+
+**Resumen**
+Se agrega snapshot del revisor en learner_review_decisions y se muestra el historial completo de decisiones en /learner/training, /learner/final-evaluation y /referente/review/[id].
+
+**Impacto**
+
+- Aprendiz y referente ven motivos, fecha/hora y autor de cada decisión
+- El historial queda visible sin ocupar demasiado espacio (scroll compacto)
+- No cambia reglas de negocio ni estados
+
+## 2026-01-27 — Reintentos ante errores temporales del LLM
+
+**Tipo:** fix  
+**Alcance:** backend
+
+**Resumen**
+Se agrega retry con backoff para respuestas 5xx/429/timeout en el proveedor LLM para evitar fallas por sobrecarga temporal.
+
+**Impacto**
+
+- Reduce errores 503 en evaluación final y chat
+- No cambia prompts ni lógica de evaluación
+- Mantiene mismo proveedor configurado
+
+## 2026-01-27 — RLS de perfiles para cola de revisión
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se habilita lectura de perfiles por admin_org/referente dentro de su alcance para destrabar vistas que combinan learner_trainings con profiles (v_review_queue).
+
+**Impacto**
+
+- Referentes ven aprendices en revisión de su local
+- Admin org ve perfiles dentro de su organización
+- Mantiene aislamiento entre organizaciones
+
+## 2026-01-27 — Fix recursión RLS en helpers de contexto
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se convierten current_profile/current_role/current_org_id/current_local_id en SECURITY DEFINER con row_security = off para evitar recursión al evaluar policies.
+
+**Impacto**
+
+- Evita errores de stack depth al consultar tablas con RLS
+- Destraba gating de evaluación final y colas de revisión
+- Mantiene aislamiento por rol/org/local

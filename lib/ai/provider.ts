@@ -12,6 +12,45 @@ type GenerateReplyOutput = {
   raw?: unknown;
 };
 
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  attempts = 3,
+): Promise<Response> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok && RETRYABLE_STATUS.has(response.status)) {
+        lastError = response;
+      } else {
+        return response;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempt < attempts) {
+      const backoff = 400 * 2 ** (attempt - 1);
+      const jitter = Math.floor(Math.random() * 120);
+      await sleep(backoff + jitter);
+    }
+  }
+
+  if (lastError instanceof Response) {
+    return lastError;
+  }
+
+  throw lastError ?? new Error('LLM provider request failed');
+}
+
 export async function generateReply(
   input: GenerateReplyInput,
 ): Promise<GenerateReplyOutput> {
@@ -51,20 +90,23 @@ export async function generateReply(
       throw new Error('LLM provider no configurado');
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const response = await fetchWithRetry(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: input.system },
+            ...input.messages,
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: input.system },
-          ...input.messages,
-        ],
-      }),
-    });
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -102,7 +144,7 @@ export async function generateReply(
       })),
     ];
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',

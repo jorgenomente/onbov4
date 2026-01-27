@@ -2,6 +2,9 @@ import Link from 'next/link';
 
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
 import { canStartFinalEvaluation } from '../../../lib/ai/final-evaluation-engine';
+import ReviewHistory, {
+  type ReviewDecision,
+} from '../../../components/ReviewHistory';
 import { startFinalEvaluationAction, submitFinalAnswerAction } from './actions';
 
 export default async function FinalEvaluationPage() {
@@ -17,6 +20,12 @@ export default async function FinalEvaluationPage() {
   }
 
   const learnerId = userData.user.id;
+
+  const { data: reviewDecisions } = await supabase
+    .from('learner_review_decisions')
+    .select('id, decision, reason, reviewer_name, created_at')
+    .eq('learner_id', learnerId)
+    .order('created_at', { ascending: false });
 
   const { data: attempt } = await supabase
     .from('final_evaluation_attempts')
@@ -44,6 +53,10 @@ export default async function FinalEvaluationPage() {
           <p className="text-sm text-slate-500" data-testid="final-in-review">
             Estado: en revisión
           </p>
+          <ReviewHistory
+            decisions={reviewDecisions as ReviewDecision[] | null}
+            title="Historial de decisiones"
+          />
           <Link href="/" className="text-sm text-slate-500">
             Volver
           </Link>
@@ -61,6 +74,11 @@ export default async function FinalEvaluationPage() {
             Mesa complicada — revisión humana final.
           </p>
         </div>
+
+        <ReviewHistory
+          decisions={reviewDecisions as ReviewDecision[] | null}
+          title="Historial de decisiones"
+        />
 
         {!allowed.allowed ? (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
@@ -108,6 +126,10 @@ export default async function FinalEvaluationPage() {
         <p className="text-sm text-slate-500" data-testid="final-in-review">
           Estado: en revisión
         </p>
+        <ReviewHistory
+          decisions={reviewDecisions as ReviewDecision[] | null}
+          title="Historial de decisiones"
+        />
         <Link href="/" className="text-sm text-slate-500">
           Volver
         </Link>
