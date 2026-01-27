@@ -102,6 +102,13 @@ Este mapa es el checkpoint que se actualiza al avanzar. Cada ítem debe moverse 
 - Documentar cómo correr el smoke test en 1 script o guía.
 - Dejar el producto listo para demo con datos reales controlados.
 
+### 8) Post‑MVP 2 — Evidencias completas para Referente/Admin (Hecho — 2026-01-27)
+
+- Views de evidencia avanzada (summary, wrong answers, dudas) en DB.
+- UI /referente/review/[id] con bloques de evidencia (lectura).
+- Seed cross-tenant para validar aislamiento por local.
+- Playwright: referente review headers verificados.
+
 ## Cómo usar este checkpoint
 
 - Este archivo es un **mapa vivo** del avance.

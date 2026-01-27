@@ -702,6 +702,126 @@ CREATE OR REPLACE VIEW "public"."v_learner_active_conversation" AS
 ALTER VIEW "public"."v_learner_active_conversation" OWNER TO "postgres";
 
 
+CREATE OR REPLACE VIEW "public"."v_learner_doubt_signals" AS
+ WITH "scoped_learners" AS (
+         SELECT "lt"."learner_id",
+            "lt"."program_id",
+            "lt"."local_id",
+            "l"."org_id"
+           FROM ("public"."learner_trainings" "lt"
+             JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+          WHERE (("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"()))))
+        ), "final_signals" AS (
+         SELECT "sl"."org_id",
+            "sl"."local_id",
+            "a"."learner_id",
+            "a"."program_id",
+            "q"."unit_order",
+            "unnest"("ev"."doubt_signals") AS "signal",
+            "ev"."created_at" AS "seen_at",
+            'final'::"text" AS "source"
+           FROM (((("scoped_learners" "sl"
+             JOIN "public"."final_evaluation_attempts" "a" ON ((("a"."learner_id" = "sl"."learner_id") AND ("a"."program_id" = "sl"."program_id"))))
+             JOIN "public"."final_evaluation_questions" "q" ON (("q"."attempt_id" = "a"."id")))
+             JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."question_id" = "q"."id")))
+             JOIN "public"."final_evaluation_evaluations" "ev" ON (("ev"."answer_id" = "ans"."id")))
+          WHERE (COALESCE("array_length"("ev"."doubt_signals", 1), 0) > 0)
+        ), "practice_signals" AS (
+         SELECT "sl"."org_id",
+            "sl"."local_id",
+            "pa"."learner_id",
+            "ps"."program_id",
+            "ps"."unit_order",
+            "unnest"("pe"."doubt_signals") AS "signal",
+            "pe"."created_at" AS "seen_at",
+            'practice'::"text" AS "source"
+           FROM ((("scoped_learners" "sl"
+             JOIN "public"."practice_attempts" "pa" ON (("pa"."learner_id" = "sl"."learner_id")))
+             JOIN "public"."practice_scenarios" "ps" ON ((("ps"."id" = "pa"."scenario_id") AND ("ps"."program_id" = "sl"."program_id"))))
+             JOIN "public"."practice_evaluations" "pe" ON (("pe"."attempt_id" = "pa"."id")))
+          WHERE (COALESCE("array_length"("pe"."doubt_signals", 1), 0) > 0)
+        ), "all_signals" AS (
+         SELECT "final_signals"."org_id",
+            "final_signals"."local_id",
+            "final_signals"."learner_id",
+            "final_signals"."program_id",
+            "final_signals"."unit_order",
+            "final_signals"."signal",
+            "final_signals"."seen_at",
+            "final_signals"."source"
+           FROM "final_signals"
+        UNION ALL
+         SELECT "practice_signals"."org_id",
+            "practice_signals"."local_id",
+            "practice_signals"."learner_id",
+            "practice_signals"."program_id",
+            "practice_signals"."unit_order",
+            "practice_signals"."signal",
+            "practice_signals"."seen_at",
+            "practice_signals"."source"
+           FROM "practice_signals"
+        )
+ SELECT "org_id",
+    "local_id",
+    "learner_id",
+    "program_id",
+    "unit_order",
+    "signal",
+    ("count"(*))::integer AS "total_count",
+    "max"("seen_at") AS "last_seen_at",
+    "array_agg"(DISTINCT "source") AS "sources"
+   FROM "all_signals"
+  GROUP BY "org_id", "local_id", "learner_id", "program_id", "unit_order", "signal";
+
+
+ALTER VIEW "public"."v_learner_doubt_signals" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."v_learner_evaluation_summary" AS
+ WITH "scoped_attempts" AS (
+         SELECT "a"."id" AS "attempt_id",
+            "a"."learner_id",
+            "a"."program_id",
+            "a"."attempt_number",
+            "a"."status",
+            "a"."global_score",
+            "a"."bot_recommendation",
+            "a"."started_at",
+            "a"."ended_at",
+            "a"."created_at",
+            "lt"."local_id",
+            "l"."org_id"
+           FROM (("public"."final_evaluation_attempts" "a"
+             JOIN "public"."learner_trainings" "lt" ON ((("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id"))))
+             JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+          WHERE (("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"()))))
+        )
+ SELECT "sa"."org_id",
+    "sa"."local_id",
+    "sa"."learner_id",
+    "sa"."program_id",
+    "sa"."attempt_id",
+    "sa"."attempt_number",
+    "sa"."status",
+    "sa"."global_score",
+    "sa"."bot_recommendation",
+    "q"."unit_order",
+    ("count"(*))::integer AS "total_questions",
+    ("avg"("ev"."score"))::numeric(5,2) AS "avg_score",
+    ("count"(*) FILTER (WHERE ("ev"."verdict" = 'pass'::"text")))::integer AS "pass_count",
+    ("count"(*) FILTER (WHERE ("ev"."verdict" = 'partial'::"text")))::integer AS "partial_count",
+    ("count"(*) FILTER (WHERE ("ev"."verdict" = 'fail'::"text")))::integer AS "fail_count",
+    "max"("ev"."created_at") AS "last_evaluated_at"
+   FROM ((("scoped_attempts" "sa"
+     JOIN "public"."final_evaluation_questions" "q" ON (("q"."attempt_id" = "sa"."attempt_id")))
+     LEFT JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."question_id" = "q"."id")))
+     LEFT JOIN "public"."final_evaluation_evaluations" "ev" ON (("ev"."answer_id" = "ans"."id")))
+  GROUP BY "sa"."org_id", "sa"."local_id", "sa"."learner_id", "sa"."program_id", "sa"."attempt_id", "sa"."attempt_number", "sa"."status", "sa"."global_score", "sa"."bot_recommendation", "q"."unit_order";
+
+
+ALTER VIEW "public"."v_learner_evaluation_summary" OWNER TO "postgres";
+
+
 CREATE OR REPLACE VIEW "public"."v_learner_evidence" AS
  SELECT "lt"."learner_id",
     "practice"."practice_summary",
@@ -775,6 +895,46 @@ CREATE OR REPLACE VIEW "public"."v_learner_training_home" AS
 
 
 ALTER VIEW "public"."v_learner_training_home" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."v_learner_wrong_answers" AS
+ WITH "scoped_attempts" AS (
+         SELECT "a"."id" AS "attempt_id",
+            "a"."learner_id",
+            "a"."program_id",
+            "lt"."local_id",
+            "l"."org_id"
+           FROM (("public"."final_evaluation_attempts" "a"
+             JOIN "public"."learner_trainings" "lt" ON ((("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id"))))
+             JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+          WHERE (("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"()))))
+        )
+ SELECT "sa"."org_id",
+    "sa"."local_id",
+    "sa"."learner_id",
+    "sa"."program_id",
+    "sa"."attempt_id",
+    "q"."unit_order",
+    "q"."id" AS "question_id",
+    "q"."question_type",
+    "q"."prompt",
+    "ans"."id" AS "answer_id",
+    "ans"."learner_answer",
+    "ev"."score",
+    "ev"."verdict",
+    "ev"."strengths",
+    "ev"."gaps",
+    "ev"."feedback",
+    "ev"."doubt_signals",
+    "ev"."created_at"
+   FROM ((("scoped_attempts" "sa"
+     JOIN "public"."final_evaluation_questions" "q" ON (("q"."attempt_id" = "sa"."attempt_id")))
+     JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."question_id" = "q"."id")))
+     JOIN "public"."final_evaluation_evaluations" "ev" ON (("ev"."answer_id" = "ans"."id")))
+  WHERE ("ev"."verdict" <> 'pass'::"text");
+
+
+ALTER VIEW "public"."v_learner_wrong_answers" OWNER TO "postgres";
 
 
 CREATE OR REPLACE VIEW "public"."v_referente_conversation_summary" AS
@@ -1608,7 +1768,12 @@ CREATE POLICY "final_evaluation_answers_insert_learner" ON "public"."final_evalu
 CREATE POLICY "final_evaluation_answers_select_visible" ON "public"."final_evaluation_answers" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM ("public"."final_evaluation_questions" "q"
      JOIN "public"."final_evaluation_attempts" "a" ON (("a"."id" = "q"."attempt_id")))
-  WHERE (("q"."id" = "final_evaluation_answers"."question_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = "auth"."uid"())) OR ("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])))))));
+  WHERE (("q"."id" = "final_evaluation_answers"."question_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = "auth"."uid"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+           FROM "public"."learner_trainings" "lt"
+          WHERE (("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+           FROM ("public"."learner_trainings" "lt"
+             JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+          WHERE (("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role"))))));
 
 
 
@@ -1680,7 +1845,12 @@ CREATE POLICY "final_evaluation_evaluations_select_visible" ON "public"."final_e
    FROM (("public"."final_evaluation_answers" "ans"
      JOIN "public"."final_evaluation_questions" "q" ON (("q"."id" = "ans"."question_id")))
      JOIN "public"."final_evaluation_attempts" "a" ON (("a"."id" = "q"."attempt_id")))
-  WHERE (("ans"."id" = "final_evaluation_evaluations"."answer_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = "auth"."uid"())) OR ("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])))))));
+  WHERE (("ans"."id" = "final_evaluation_evaluations"."answer_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = "auth"."uid"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+           FROM "public"."learner_trainings" "lt"
+          WHERE (("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+           FROM ("public"."learner_trainings" "lt"
+             JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+          WHERE (("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role"))))));
 
 
 
@@ -1695,7 +1865,12 @@ CREATE POLICY "final_evaluation_questions_insert_learner" ON "public"."final_eva
 
 CREATE POLICY "final_evaluation_questions_select_visible" ON "public"."final_evaluation_questions" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM "public"."final_evaluation_attempts" "a"
-  WHERE (("a"."id" = "final_evaluation_questions"."attempt_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = "auth"."uid"())) OR ("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])))))));
+  WHERE (("a"."id" = "final_evaluation_questions"."attempt_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = "auth"."uid"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+           FROM "public"."learner_trainings" "lt"
+          WHERE (("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+           FROM ("public"."learner_trainings" "lt"
+             JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+          WHERE (("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role"))))));
 
 
 
@@ -2305,6 +2480,18 @@ GRANT ALL ON TABLE "public"."v_learner_active_conversation" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."v_learner_doubt_signals" TO "anon";
+GRANT ALL ON TABLE "public"."v_learner_doubt_signals" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_learner_doubt_signals" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_learner_evaluation_summary" TO "anon";
+GRANT ALL ON TABLE "public"."v_learner_evaluation_summary" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_learner_evaluation_summary" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."v_learner_evidence" TO "anon";
 GRANT ALL ON TABLE "public"."v_learner_evidence" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_learner_evidence" TO "service_role";
@@ -2320,6 +2507,12 @@ GRANT ALL ON TABLE "public"."v_learner_progress" TO "service_role";
 GRANT ALL ON TABLE "public"."v_learner_training_home" TO "anon";
 GRANT ALL ON TABLE "public"."v_learner_training_home" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_learner_training_home" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "anon";
+GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "service_role";
 
 
 

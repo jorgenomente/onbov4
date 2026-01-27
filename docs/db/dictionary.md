@@ -186,6 +186,31 @@
 | v_learner_active_conversation    | unit_order          | integer                  | false    |                                    |
 | v_learner_active_conversation    | context             | text                     | false    |                                    |
 | v_learner_active_conversation    | created_at          | timestamp with time zone | false    |                                    |
+| v_learner_doubt_signals          | org_id              | uuid                     | false    |                                    |
+| v_learner_doubt_signals          | local_id            | uuid                     | false    |                                    |
+| v_learner_doubt_signals          | learner_id          | uuid                     | false    |                                    |
+| v_learner_doubt_signals          | program_id          | uuid                     | false    |                                    |
+| v_learner_doubt_signals          | unit_order          | integer                  | false    |                                    |
+| v_learner_doubt_signals          | signal              | text                     | false    |                                    |
+| v_learner_doubt_signals          | total_count         | integer                  | false    |                                    |
+| v_learner_doubt_signals          | last_seen_at        | timestamp with time zone | false    |                                    |
+| v_learner_doubt_signals          | sources             | ARRAY                    | false    |                                    |
+| v_learner_evaluation_summary     | org_id              | uuid                     | false    |                                    |
+| v_learner_evaluation_summary     | local_id            | uuid                     | false    |                                    |
+| v_learner_evaluation_summary     | learner_id          | uuid                     | false    |                                    |
+| v_learner_evaluation_summary     | program_id          | uuid                     | false    |                                    |
+| v_learner_evaluation_summary     | attempt_id          | uuid                     | false    |                                    |
+| v_learner_evaluation_summary     | attempt_number      | integer                  | false    |                                    |
+| v_learner_evaluation_summary     | status              | text                     | false    |                                    |
+| v_learner_evaluation_summary     | global_score        | numeric                  | false    |                                    |
+| v_learner_evaluation_summary     | bot_recommendation  | text                     | false    |                                    |
+| v_learner_evaluation_summary     | unit_order          | integer                  | false    |                                    |
+| v_learner_evaluation_summary     | total_questions     | integer                  | false    |                                    |
+| v_learner_evaluation_summary     | avg_score           | numeric                  | false    |                                    |
+| v_learner_evaluation_summary     | pass_count          | integer                  | false    |                                    |
+| v_learner_evaluation_summary     | partial_count       | integer                  | false    |                                    |
+| v_learner_evaluation_summary     | fail_count          | integer                  | false    |                                    |
+| v_learner_evaluation_summary     | last_evaluated_at   | timestamp with time zone | false    |                                    |
 | v_learner_evidence               | learner_id          | uuid                     | false    |                                    |
 | v_learner_evidence               | practice_summary    | json                     | false    |                                    |
 | v_learner_evidence               | doubt_signals       | ARRAY                    | false    |                                    |
@@ -204,6 +229,24 @@
 | v_learner_training_home          | current_unit_title  | text                     | false    |                                    |
 | v_learner_training_home          | objectives          | ARRAY                    | false    |                                    |
 | v_learner_training_home          | progress_percent    | numeric                  | false    |                                    |
+| v_learner_wrong_answers          | org_id              | uuid                     | false    |                                    |
+| v_learner_wrong_answers          | local_id            | uuid                     | false    |                                    |
+| v_learner_wrong_answers          | learner_id          | uuid                     | false    |                                    |
+| v_learner_wrong_answers          | program_id          | uuid                     | false    |                                    |
+| v_learner_wrong_answers          | attempt_id          | uuid                     | false    |                                    |
+| v_learner_wrong_answers          | unit_order          | integer                  | false    |                                    |
+| v_learner_wrong_answers          | question_id         | uuid                     | false    |                                    |
+| v_learner_wrong_answers          | question_type       | text                     | false    |                                    |
+| v_learner_wrong_answers          | prompt              | text                     | false    |                                    |
+| v_learner_wrong_answers          | answer_id           | uuid                     | false    |                                    |
+| v_learner_wrong_answers          | learner_answer      | text                     | false    |                                    |
+| v_learner_wrong_answers          | score               | numeric                  | false    |                                    |
+| v_learner_wrong_answers          | verdict             | text                     | false    |                                    |
+| v_learner_wrong_answers          | strengths           | ARRAY                    | false    |                                    |
+| v_learner_wrong_answers          | gaps                | ARRAY                    | false    |                                    |
+| v_learner_wrong_answers          | feedback            | text                     | false    |                                    |
+| v_learner_wrong_answers          | doubt_signals       | ARRAY                    | false    |                                    |
+| v_learner_wrong_answers          | created_at          | timestamp with time zone | false    |                                    |
 | v_referente_conversation_summary | conversation_id     | uuid                     | false    |                                    |
 | v_referente_conversation_summary | learner_id          | uuid                     | false    |                                    |
 | v_referente_conversation_summary | full_name           | text                     | false    |                                    |
@@ -281,16 +324,21 @@
 
 - RLS: enabled
 
-| policy_name                                                                                                                                                                                                                                         | command | using              | with_check |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------ | ---------- |
-| final_evaluation_answers_insert_learner                                                                                                                                                                                                             | INSERT  | (EXISTS ( SELECT 1 |            |
-| FROM (final_evaluation_questions q                                                                                                                                                                                                                  |         |                    |            |
-| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                                                        |         |                    |            |
-| WHERE ((q.id = final_evaluation_answers.question_id) AND (a.learner_id = auth.uid()))))                                                                                                                                                             |         |                    |            |
-| final_evaluation_answers_select_visible                                                                                                                                                                                                             | SELECT  | (EXISTS ( SELECT 1 |            |
-| FROM (final_evaluation_questions q                                                                                                                                                                                                                  |         |                    |            |
-| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                                                        |         |                    |            |
-| WHERE ((q.id = final_evaluation_answers.question_id) AND ((("current_role"() = 'aprendiz'::app_role) AND (a.learner_id = auth.uid())) OR ("current_role"() = ANY (ARRAY['superadmin'::app_role, 'admin_org'::app_role, 'referente'::app_role])))))) |         |                    |            |
+| policy_name                                                                                                                                                                                                 | command | using              | with_check |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------ | ---------- |
+| final_evaluation_answers_insert_learner                                                                                                                                                                     | INSERT  | (EXISTS ( SELECT 1 |            |
+| FROM (final_evaluation_questions q                                                                                                                                                                          |         |                    |            |
+| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                |         |                    |            |
+| WHERE ((q.id = final_evaluation_answers.question_id) AND (a.learner_id = auth.uid()))))                                                                                                                     |         |                    |            |
+| final_evaluation_answers_select_visible                                                                                                                                                                     | SELECT  | (EXISTS ( SELECT 1 |            |
+| FROM (final_evaluation_questions q                                                                                                                                                                          |         |                    |            |
+| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                |         |                    |            |
+| WHERE ((q.id = final_evaluation_answers.question_id) AND ((("current_role"() = 'aprendiz'::app_role) AND (a.learner_id = auth.uid())) OR (("current_role"() = 'referente'::app_role) AND (EXISTS ( SELECT 1 |         |                    |            |
+| FROM learner_trainings lt                                                                                                                                                                                   |         |                    |            |
+| WHERE ((lt.learner_id = a.learner_id) AND (lt.program_id = a.program_id) AND (lt.local_id = current_local_id()))))) OR (("current_role"() = 'admin_org'::app_role) AND (EXISTS ( SELECT 1                   |         |                    |            |
+| FROM (learner_trainings lt                                                                                                                                                                                  |         |                    |            |
+| JOIN locals l ON ((l.id = lt.local_id)))                                                                                                                                                                    |         |                    |            |
+| WHERE ((lt.learner_id = a.learner_id) AND (lt.program_id = a.program_id) AND (l.org_id = current_org_id()))))) OR ("current_role"() = 'superadmin'::app_role)))))                                           |         |                    |            |
 
 ### final_evaluation_attempts
 
@@ -327,31 +375,41 @@
 
 - RLS: enabled
 
-| policy_name                                                                                                                                                                                                                                             | command | using              | with_check |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------ | ---------- |
-| final_evaluation_evaluations_insert_learner                                                                                                                                                                                                             | INSERT  | (EXISTS ( SELECT 1 |            |
-| FROM ((final_evaluation_answers ans                                                                                                                                                                                                                     |         |                    |            |
-| JOIN final_evaluation_questions q ON ((q.id = ans.question_id)))                                                                                                                                                                                        |         |                    |            |
-| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                                                            |         |                    |            |
-| WHERE ((ans.id = final_evaluation_evaluations.answer_id) AND (a.learner_id = auth.uid()))))                                                                                                                                                             |         |                    |            |
-| final_evaluation_evaluations_select_visible                                                                                                                                                                                                             | SELECT  | (EXISTS ( SELECT 1 |            |
-| FROM ((final_evaluation_answers ans                                                                                                                                                                                                                     |         |                    |            |
-| JOIN final_evaluation_questions q ON ((q.id = ans.question_id)))                                                                                                                                                                                        |         |                    |            |
-| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                                                            |         |                    |            |
-| WHERE ((ans.id = final_evaluation_evaluations.answer_id) AND ((("current_role"() = 'aprendiz'::app_role) AND (a.learner_id = auth.uid())) OR ("current_role"() = ANY (ARRAY['superadmin'::app_role, 'admin_org'::app_role, 'referente'::app_role])))))) |         |                    |            |
+| policy_name                                                                                                                                                                                                     | command | using              | with_check |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------ | ---------- |
+| final_evaluation_evaluations_insert_learner                                                                                                                                                                     | INSERT  | (EXISTS ( SELECT 1 |            |
+| FROM ((final_evaluation_answers ans                                                                                                                                                                             |         |                    |            |
+| JOIN final_evaluation_questions q ON ((q.id = ans.question_id)))                                                                                                                                                |         |                    |            |
+| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                    |         |                    |            |
+| WHERE ((ans.id = final_evaluation_evaluations.answer_id) AND (a.learner_id = auth.uid()))))                                                                                                                     |         |                    |            |
+| final_evaluation_evaluations_select_visible                                                                                                                                                                     | SELECT  | (EXISTS ( SELECT 1 |            |
+| FROM ((final_evaluation_answers ans                                                                                                                                                                             |         |                    |            |
+| JOIN final_evaluation_questions q ON ((q.id = ans.question_id)))                                                                                                                                                |         |                    |            |
+| JOIN final_evaluation_attempts a ON ((a.id = q.attempt_id)))                                                                                                                                                    |         |                    |            |
+| WHERE ((ans.id = final_evaluation_evaluations.answer_id) AND ((("current_role"() = 'aprendiz'::app_role) AND (a.learner_id = auth.uid())) OR (("current_role"() = 'referente'::app_role) AND (EXISTS ( SELECT 1 |         |                    |            |
+| FROM learner_trainings lt                                                                                                                                                                                       |         |                    |            |
+| WHERE ((lt.learner_id = a.learner_id) AND (lt.program_id = a.program_id) AND (lt.local_id = current_local_id()))))) OR (("current_role"() = 'admin_org'::app_role) AND (EXISTS ( SELECT 1                       |         |                    |            |
+| FROM (learner_trainings lt                                                                                                                                                                                      |         |                    |            |
+| JOIN locals l ON ((l.id = lt.local_id)))                                                                                                                                                                        |         |                    |            |
+| WHERE ((lt.learner_id = a.learner_id) AND (lt.program_id = a.program_id) AND (l.org_id = current_org_id()))))) OR ("current_role"() = 'superadmin'::app_role)))))                                               |         |                    |            |
 
 ### final_evaluation_questions
 
 - RLS: enabled
 
-| policy_name                                                                                                                                                                                                                                          | command | using              | with_check |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------ | ---------- |
-| final_evaluation_questions_insert_learner                                                                                                                                                                                                            | INSERT  | (EXISTS ( SELECT 1 |            |
-| FROM final_evaluation_attempts a                                                                                                                                                                                                                     |         |                    |            |
-| WHERE ((a.id = final_evaluation_questions.attempt_id) AND (a.learner_id = auth.uid()))))                                                                                                                                                             |         |                    |            |
-| final_evaluation_questions_select_visible                                                                                                                                                                                                            | SELECT  | (EXISTS ( SELECT 1 |            |
-| FROM final_evaluation_attempts a                                                                                                                                                                                                                     |         |                    |            |
-| WHERE ((a.id = final_evaluation_questions.attempt_id) AND ((("current_role"() = 'aprendiz'::app_role) AND (a.learner_id = auth.uid())) OR ("current_role"() = ANY (ARRAY['superadmin'::app_role, 'admin_org'::app_role, 'referente'::app_role])))))) |         |                    |            |
+| policy_name                                                                                                                                                                                                  | command | using              | with_check |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ------------------ | ---------- |
+| final_evaluation_questions_insert_learner                                                                                                                                                                    | INSERT  | (EXISTS ( SELECT 1 |            |
+| FROM final_evaluation_attempts a                                                                                                                                                                             |         |                    |            |
+| WHERE ((a.id = final_evaluation_questions.attempt_id) AND (a.learner_id = auth.uid()))))                                                                                                                     |         |                    |            |
+| final_evaluation_questions_select_visible                                                                                                                                                                    | SELECT  | (EXISTS ( SELECT 1 |            |
+| FROM final_evaluation_attempts a                                                                                                                                                                             |         |                    |            |
+| WHERE ((a.id = final_evaluation_questions.attempt_id) AND ((("current_role"() = 'aprendiz'::app_role) AND (a.learner_id = auth.uid())) OR (("current_role"() = 'referente'::app_role) AND (EXISTS ( SELECT 1 |         |                    |            |
+| FROM learner_trainings lt                                                                                                                                                                                    |         |                    |            |
+| WHERE ((lt.learner_id = a.learner_id) AND (lt.program_id = a.program_id) AND (lt.local_id = current_local_id()))))) OR (("current_role"() = 'admin_org'::app_role) AND (EXISTS ( SELECT 1                    |         |                    |            |
+| FROM (learner_trainings lt                                                                                                                                                                                   |         |                    |            |
+| JOIN locals l ON ((l.id = lt.local_id)))                                                                                                                                                                     |         |                    |            |
+| WHERE ((lt.learner_id = a.learner_id) AND (lt.program_id = a.program_id) AND (l.org_id = current_org_id()))))) OR ("current_role"() = 'superadmin'::app_role)))))                                            |         |                    |            |
 
 ### knowledge_items
 

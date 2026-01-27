@@ -19,9 +19,36 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
 
   const { data: evidence, error: evidenceError } = await supabase
     .from('v_learner_evidence')
-    .select('learner_id, practice_summary, doubt_signals, recent_messages')
+    .select('learner_id, practice_summary, recent_messages')
     .eq('learner_id', learnerId)
     .maybeSingle();
+
+  const { data: evaluationSummaryData, error: evaluationSummaryError } =
+    await supabase
+      .from('v_learner_evaluation_summary')
+      .select(
+        'attempt_id, attempt_number, status, global_score, bot_recommendation, unit_order, total_questions, avg_score, pass_count, partial_count, fail_count, last_evaluated_at',
+      )
+      .eq('learner_id', learnerId)
+      .order('attempt_number', { ascending: false })
+      .order('unit_order', { ascending: true });
+
+  const { data: wrongAnswersData, error: wrongAnswersError } = await supabase
+    .from('v_learner_wrong_answers')
+    .select(
+      'attempt_id, unit_order, question_type, prompt, learner_answer, score, verdict, strengths, gaps, feedback, doubt_signals, created_at',
+    )
+    .eq('learner_id', learnerId)
+    .order('created_at', { ascending: false });
+
+  const { data: doubtSignalsData, error: doubtSignalsError } = await supabase
+    .from('v_learner_doubt_signals')
+    .select(
+      'unit_order, signal, total_count, last_seen_at, sources, learner_id',
+    )
+    .eq('learner_id', learnerId)
+    .order('unit_order', { ascending: true })
+    .order('signal', { ascending: true });
 
   const { data: learnerProfile } = await supabase
     .from('profiles')
@@ -35,7 +62,13 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
     .eq('learner_id', learnerId)
     .order('created_at', { ascending: false });
 
-  if (evidenceError || !evidence) {
+  if (
+    evidenceError ||
+    evaluationSummaryError ||
+    wrongAnswersError ||
+    doubtSignalsError ||
+    !evidence
+  ) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-4 px-4 py-6">
         <Link href="/referente/review" className="text-sm text-slate-500">
@@ -64,7 +97,74 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
       created_at: string;
     }>) ?? [];
 
-  const doubtSignals = (evidence.doubt_signals as string[]) ?? [];
+  const evaluationSummary =
+    (evaluationSummaryData as Array<{
+      attempt_id: string;
+      attempt_number: number;
+      status: string;
+      global_score: number | null;
+      bot_recommendation: string | null;
+      unit_order: number;
+      total_questions: number;
+      avg_score: number | null;
+      pass_count: number;
+      partial_count: number;
+      fail_count: number;
+      last_evaluated_at: string | null;
+    }>) ?? [];
+
+  const wrongAnswers =
+    (wrongAnswersData as Array<{
+      attempt_id: string;
+      unit_order: number;
+      question_type: string;
+      prompt: string;
+      learner_answer: string;
+      score: number;
+      verdict: string;
+      strengths: string[];
+      gaps: string[];
+      feedback: string;
+      doubt_signals: string[];
+      created_at: string;
+    }>) ?? [];
+
+  const doubtSignals =
+    (doubtSignalsData as Array<{
+      unit_order: number;
+      signal: string;
+      total_count: number;
+      last_seen_at: string | null;
+      sources: string[] | null;
+    }>) ?? [];
+
+  const summaryByAttempt = evaluationSummary.reduce(
+    (acc, row) => {
+      const existing = acc.get(row.attempt_id);
+      if (existing) {
+        existing.rows.push(row);
+        return acc;
+      }
+      acc.set(row.attempt_id, {
+        attemptNumber: row.attempt_number,
+        status: row.status,
+        globalScore: row.global_score,
+        recommendation: row.bot_recommendation,
+        rows: [row],
+      });
+      return acc;
+    },
+    new Map<
+      string,
+      {
+        attemptNumber: number;
+        status: string;
+        globalScore: number | null;
+        recommendation: string | null;
+        rows: typeof evaluationSummary;
+      }
+    >(),
+  );
 
   async function approve(formData: FormData) {
     'use server';
@@ -98,19 +198,138 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-700">
-          Señales de duda
+          Resumen por unidad
         </h2>
+        {evaluationSummary.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">
+            No hay evaluación final registrada.
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-4">
+            {[...summaryByAttempt.entries()].map(([attemptId, summary]) => (
+              <div
+                key={attemptId}
+                className="rounded-md border border-slate-200 p-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">
+                    Intento {summary.attemptNumber}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                    {summary.status}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Score global:{' '}
+                  {summary.globalScore === null
+                    ? '—'
+                    : Math.round(summary.globalScore)}
+                  {' · '}Recomendación: {summary.recommendation ?? '—'}
+                </p>
+                <ul className="mt-3 flex flex-col gap-3 text-sm">
+                  {summary.rows.map((row) => (
+                    <li key={`${attemptId}-${row.unit_order}`}>
+                      <p className="font-medium text-slate-700">
+                        Unidad {row.unit_order}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {row.total_questions} preguntas · promedio{' '}
+                        {row.avg_score === null
+                          ? '—'
+                          : Math.round(row.avg_score)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                          Pass {row.pass_count}
+                        </span>
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">
+                          Partial {row.partial_count}
+                        </span>
+                        <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-700">
+                          Fail {row.fail_count}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-700">
+          Respuestas fallidas
+        </h2>
+        {wrongAnswers.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">
+            No hay respuestas fallidas registradas.
+          </p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-4">
+            {wrongAnswers.map((answer, index) => (
+              <li
+                key={`${answer.attempt_id}-${answer.unit_order}-${index}`}
+                className="rounded-md border border-slate-200 p-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                  <span>Unidad {answer.unit_order}</span>
+                  <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
+                    {answer.verdict}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-medium text-slate-700">
+                  {answer.prompt}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  <span className="font-semibold">Respuesta:</span>{' '}
+                  {answer.learner_answer}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Score {Math.round(answer.score)}
+                </p>
+                {answer.gaps?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {answer.gaps.map((gap) => (
+                      <span
+                        key={gap}
+                        className="rounded-full bg-slate-100 px-2 py-1 text-slate-600"
+                      >
+                        {gap}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <p className="mt-2 text-sm text-slate-600">{answer.feedback}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-700">Señales</h2>
         {doubtSignals.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">Sin señales.</p>
         ) : (
-          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          <div className="mt-3 flex flex-col gap-3">
             {doubtSignals.map((signal) => (
-              <span
-                key={signal}
-                className="rounded-full bg-amber-100 px-2 py-1 text-amber-700"
+              <div
+                key={`${signal.unit_order}-${signal.signal}`}
+                className="rounded-md border border-slate-200 p-3 text-sm"
               >
-                {signal}
-              </span>
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Unidad {signal.unit_order}</span>
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">
+                    {signal.signal}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Total: {signal.total_count} · Fuentes:{' '}
+                  {signal.sources?.length ? signal.sources.join(', ') : '—'}
+                </p>
+              </div>
             ))}
           </div>
         )}

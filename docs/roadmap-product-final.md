@@ -147,7 +147,7 @@ Cada checkpoint tiene:
 
 ---
 
-### Fase 2 — Evidencias completas para Referente/Admin
+### Fase 2 — Evidencias completas para Referente/Admin (CERRADA)
 
 **Objetivo**: dar decisiones con evidencias más profundas.
 
@@ -238,29 +238,30 @@ Cada checkpoint tiene:
 
 ## 5) Checkpoint actual
 
-**Checkpoint actual:** CP‑1 (Evidencias completas para Referente/Admin)
+**Checkpoint actual:** CP‑2 (Admin Org — gestión y métricas mínimas)
 
 **En curso**
 
-- Definición de views de evidencia avanzada.
-- UI de revisión con evidencia profunda.
+- Definición de contratos de datos para Admin Org.
+- UI /org/learners + filtros por local.
 
 **Siguiente inmediato**
 
-- Iniciar Fase 2 según roadmap.
+- Iniciar Fase 3 según roadmap.
 
 ---
 
 ## 6) Qué sigue (próximo lote post‑MVP)
 
-**LOTE Post‑MVP 2 — Evidencias completas para Referente/Admin**
+**LOTE Post‑MVP 3 — Admin Org (gestión y métricas mínimas)**
 
-- Views de evidencia avanzada (summary, wrong answers, dudas).
-- UI de revisión ampliada.
+- UI /org/learners + filtros por local.
+- UI /org/locals y /org/users (gestión básica).
+- Métricas agregadas mínimas por local.
 
 **Checklist de cierre**
 
-- Referente toma decisión con evidencia completa.
+- Admin puede operar sin soporte interno.
 - `npm run build` + `npm run lint` OK.
 
 ---

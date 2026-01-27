@@ -805,3 +805,93 @@ Se marca como cerrado el Lote Post‑MVP 1 en el roadmap y se actualiza el check
 - Roadmap actualizado con próximo checkpoint (Fase 2)
 - Audit checkpoint refleja Post‑MVP 1 como hecho
 - No cambia comportamiento funcional
+
+## 2026-01-27 — Fase 2 Sub‑lote F: views evidencia + hardening RLS final evaluation
+
+**Tipo:** feature  
+**Alcance:** db | rls
+
+**Resumen**
+Se agregan las views `v_learner_evaluation_summary`, `v_learner_wrong_answers` y `v_learner_doubt_signals` para evidencia de revisión. Se endurecen policies SELECT de `final_evaluation_questions`, `final_evaluation_answers` y `final_evaluation_evaluations` para scope por org/local (tenant‑scoped).
+
+**Impacto**
+
+- Referente/Admin cuentan con contratos de evidencia completos por unidad y señales de duda
+- Se evita lectura cross‑tenant en tablas de evaluación final
+- No cambia flujo del aprendiz ni lógica de evaluación
+
+**Checks manuales mínimos**
+
+- Referente: SELECT en `v_learner_evaluation_summary` y `v_learner_wrong_answers` solo devuelve learners de su local
+- Admin Org: SELECT en las 3 views solo devuelve learners de su org
+- Aprendiz: SELECT en las 3 views no devuelve filas
+
+## 2026-01-27 — Seed mínimo evidencia (QA local)
+
+**Tipo:** chore  
+**Alcance:** db | qa
+
+**Resumen**
+Se agrega un seed mínimo idempotente para generar datos de práctica y evaluación final y validar las views de evidencia en local.
+
+**Impacto**
+
+- Permite smoke tests de `v_learner_evaluation_summary`, `v_learner_wrong_answers` y `v_learner_doubt_signals`
+- No afecta producción (solo local por migración de seed)
+- No cambia flujos de aprendiz/referente
+
+## 2026-01-27 — Fase 2 Sub‑lote F.1: seed cross‑tenant (Local B) + leakage checks
+
+**Tipo:** chore  
+**Alcance:** db | qa
+
+**Resumen**
+Se agrega seed idempotente para un segundo local (Local B) con referente/aprendiz y evidencia mínima (práctica + evaluación final), para pruebas concluyentes de fuga entre locales.
+
+**Impacto**
+
+- Permite validar que Referente A no ve evidencia de Local B
+- Habilita comparación de resultados A vs B en views de evidencia
+- No cambia lógica de producto
+
+**Leakage checks (counts)**
+
+- Test anterior (mismo sub cambiando claim local_id): INVALIDO (current_local_id() usa profiles.local_id, ignora claim)
+- Referente A resolved_local_id=1af5842d-68c0-4c56-8025-73d416730016 (Local A)
+- Referente A forzando Local B: summary_b_forced=0, wrong_b_forced=0, doubt_b_forced=0
+- PASS/FAIL: PASS
+
+## 2026-01-27 — Fase 2 Sub‑lote G: UI Referente evidencia (lectura)
+
+**Tipo:** feature  
+**Alcance:** frontend | ux | qa
+
+**Resumen**
+Se extiende /referente/review/[id] para mostrar evidencia de evaluación final con tres bloques (resumen por unidad, respuestas fallidas, señales) usando views server-side. Se agrega test Playwright que valida la presencia de los tres headers.
+
+**Impacto**
+
+- Referente accede a evidencia accionable sin nuevas acciones
+- Lectura mobile-first con datos de v_learner_evaluation_summary / v_learner_wrong_answers / v_learner_doubt_signals
+- QA básica: lint/build y db reset OK
+
+**Checks manuales mínimos**
+
+- npx supabase db reset
+- npm run lint
+- npm run build
+- npm run e2e -- referente-review.spec.ts
+
+## 2026-01-27 — Cierre Fase 2 (Evidencias completas Referente/Admin)
+
+**Tipo:** docs  
+**Alcance:** backend | frontend | qa
+
+**Resumen**
+Se declara cerrado el checkpoint de Fase 2 con views de evidencia, UI de revisión ampliada y validaciones de QA/E2E.
+
+**Impacto**
+
+- Referentes pueden revisar evidencia profunda por unidad
+- Validación de aislamiento por local realizada con seed cross-tenant
+- QA mínima completada (db reset, lint, build, e2e)
