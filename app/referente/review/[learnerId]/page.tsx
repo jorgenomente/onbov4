@@ -8,6 +8,7 @@ import ReviewHistory, {
   type ReviewDecision,
 } from '../../../../components/ReviewHistory';
 import { getSupabaseServerClient } from '../../../../lib/server/supabase';
+import ValidationV2Form from './ValidationV2Form';
 
 type ReviewPageProps = {
   params: Promise<{ learnerId: string }>;
@@ -68,6 +69,15 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
     .select('id, decision, reason, reviewer_name, created_at')
     .eq('learner_id', learnerId)
     .order('created_at', { ascending: false });
+
+  const { data: reviewValidationsV2 } = await supabase
+    .from('learner_review_validations_v2')
+    .select(
+      'id, decision_type, perceived_severity, recommended_action, checklist, comment, reviewer_name, reviewer_role, created_at',
+    )
+    .eq('learner_id', learnerId)
+    .order('created_at', { ascending: false })
+    .limit(5);
 
   if (
     evidenceError ||
@@ -156,6 +166,39 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
       top_gap: string | null;
     }>) ?? [];
 
+  const validationsV2 =
+    (reviewValidationsV2 as Array<{
+      id: string;
+      decision_type: string;
+      perceived_severity: string;
+      recommended_action: string;
+      checklist: Record<string, boolean> | null;
+      comment: string | null;
+      reviewer_name: string | null;
+      reviewer_role: string;
+      created_at: string;
+    }>) ?? [];
+
+  const renderChecklist = (checklist: Record<string, boolean> | null) => {
+    if (!checklist) return null;
+    const items = Object.entries(checklist).filter(([, value]) => value);
+    if (items.length === 0) {
+      return <span className="text-xs text-slate-500">Checklist vacío</span>;
+    }
+    return (
+      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+        {items.map(([key]) => (
+          <span
+            key={key}
+            className="rounded-full bg-slate-100 px-2 py-1 text-slate-600"
+          >
+            {key}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   const summaryByAttempt = evaluationSummary.reduce(
     (acc, row) => {
       const existing = acc.get(row.attempt_id);
@@ -213,6 +256,66 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
         decisions={reviewDecisions as ReviewDecision[] | null}
         compact={false}
       />
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-700">
+          Validación v2 (interna)
+        </h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Registro estructurado paralelo (append-only).
+        </p>
+        <div className="mt-4">
+          <ValidationV2Form learnerId={learnerId} />
+        </div>
+        <div className="mt-6">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase">
+            Historial v2
+          </h3>
+          {validationsV2.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">
+              Todavía no hay validaciones v2.
+            </p>
+          ) : (
+            <ul className="mt-3 flex flex-col gap-3">
+              {validationsV2.map((validation) => {
+                const createdAt = new Date(
+                  validation.created_at,
+                ).toLocaleString('es-AR');
+                return (
+                  <li
+                    key={validation.id}
+                    className="rounded-md border border-slate-200 p-3 text-sm text-slate-600"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                      <span>{createdAt}</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                        {validation.reviewer_role}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-slate-700">
+                      {validation.decision_type}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Severidad: {validation.perceived_severity} · Acción:{' '}
+                      {validation.recommended_action}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Referente:{' '}
+                      {validation.reviewer_name?.trim() || 'Referente'}
+                    </p>
+                    {validation.comment ? (
+                      <p className="mt-2 text-sm text-slate-600">
+                        {validation.comment}
+                      </p>
+                    ) : null}
+                    {renderChecklist(validation.checklist)}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-700">

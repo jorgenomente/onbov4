@@ -34,6 +34,16 @@ CREATE TYPE "public"."app_role" AS ENUM (
 ALTER TYPE "public"."app_role" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."decision_type_v2" AS ENUM (
+    'approve',
+    'reject',
+    'request_reinforcement'
+);
+
+
+ALTER TYPE "public"."decision_type_v2" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."learner_status" AS ENUM (
     'en_entrenamiento',
     'en_practica',
@@ -44,6 +54,26 @@ CREATE TYPE "public"."learner_status" AS ENUM (
 
 
 ALTER TYPE "public"."learner_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."perceived_severity" AS ENUM (
+    'low',
+    'medium',
+    'high'
+);
+
+
+ALTER TYPE "public"."perceived_severity" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."recommended_action" AS ENUM (
+    'none',
+    'follow_up',
+    'retraining'
+);
+
+
+ALTER TYPE "public"."recommended_action" OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."current_local_id"() RETURNS "uuid"
@@ -467,6 +497,27 @@ CREATE TABLE IF NOT EXISTS "public"."learner_review_decisions" (
 
 
 ALTER TABLE "public"."learner_review_decisions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."learner_review_validations_v2" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "learner_id" "uuid" NOT NULL,
+    "reviewer_id" "uuid" NOT NULL,
+    "local_id" "uuid" NOT NULL,
+    "program_id" "uuid" NOT NULL,
+    "decision_type" "public"."decision_type_v2" NOT NULL,
+    "perceived_severity" "public"."perceived_severity" DEFAULT 'low'::"public"."perceived_severity" NOT NULL,
+    "recommended_action" "public"."recommended_action" DEFAULT 'none'::"public"."recommended_action" NOT NULL,
+    "checklist" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "comment" "text",
+    "reviewer_name" "text" NOT NULL,
+    "reviewer_role" "public"."app_role" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "learner_review_validations_v2_checklist_object" CHECK (("jsonb_typeof"("checklist") = 'object'::"text"))
+);
+
+
+ALTER TABLE "public"."learner_review_validations_v2" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."learner_state_transitions" (
@@ -1414,6 +1465,11 @@ ALTER TABLE ONLY "public"."learner_review_decisions"
 
 
 
+ALTER TABLE ONLY "public"."learner_review_validations_v2"
+    ADD CONSTRAINT "learner_review_validations_v2_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."learner_state_transitions"
     ADD CONSTRAINT "learner_state_transitions_pkey" PRIMARY KEY ("id");
 
@@ -1603,6 +1659,22 @@ CREATE INDEX "learner_review_decisions_reviewer_id_idx" ON "public"."learner_rev
 
 
 
+CREATE INDEX "learner_review_validations_v2_decision_created_at_idx" ON "public"."learner_review_validations_v2" USING "btree" ("decision_type", "created_at" DESC);
+
+
+
+CREATE INDEX "learner_review_validations_v2_learner_created_at_idx" ON "public"."learner_review_validations_v2" USING "btree" ("learner_id", "created_at" DESC);
+
+
+
+CREATE INDEX "learner_review_validations_v2_local_created_at_idx" ON "public"."learner_review_validations_v2" USING "btree" ("local_id", "created_at" DESC);
+
+
+
+CREATE INDEX "learner_review_validations_v2_program_created_at_idx" ON "public"."learner_review_validations_v2" USING "btree" ("program_id", "created_at" DESC);
+
+
+
 CREATE INDEX "learner_state_transitions_created_at_idx" ON "public"."learner_state_transitions" USING "btree" ("created_at");
 
 
@@ -1751,6 +1823,10 @@ CREATE OR REPLACE TRIGGER "trg_learner_review_decisions_prevent_update" BEFORE D
 
 
 
+CREATE OR REPLACE TRIGGER "trg_learner_review_validations_v2_prevent_update" BEFORE DELETE OR UPDATE ON "public"."learner_review_validations_v2" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_learner_trainings_set_updated_at" BEFORE UPDATE ON "public"."learner_trainings" FOR EACH ROW EXECUTE FUNCTION "public"."set_learner_training_updated_at"();
 
 
@@ -1876,6 +1952,26 @@ ALTER TABLE ONLY "public"."learner_review_decisions"
 
 ALTER TABLE ONLY "public"."learner_review_decisions"
     ADD CONSTRAINT "learner_review_decisions_reviewer_id_fkey" FOREIGN KEY ("reviewer_id") REFERENCES "public"."profiles"("user_id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."learner_review_validations_v2"
+    ADD CONSTRAINT "learner_review_validations_v2_learner_id_fkey" FOREIGN KEY ("learner_id") REFERENCES "public"."profiles"("user_id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."learner_review_validations_v2"
+    ADD CONSTRAINT "learner_review_validations_v2_local_id_fkey" FOREIGN KEY ("local_id") REFERENCES "public"."locals"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."learner_review_validations_v2"
+    ADD CONSTRAINT "learner_review_validations_v2_program_id_fkey" FOREIGN KEY ("program_id") REFERENCES "public"."training_programs"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."learner_review_validations_v2"
+    ADD CONSTRAINT "learner_review_validations_v2_reviewer_id_fkey" FOREIGN KEY ("reviewer_id") REFERENCES "public"."profiles"("user_id") ON DELETE RESTRICT;
 
 
 
@@ -2271,6 +2367,37 @@ CREATE POLICY "learner_review_decisions_select_referente" ON "public"."learner_r
 
 
 CREATE POLICY "learner_review_decisions_select_superadmin" ON "public"."learner_review_decisions" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
+ALTER TABLE "public"."learner_review_validations_v2" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "learner_review_validations_v2_insert_reviewer" ON "public"."learner_review_validations_v2" FOR INSERT WITH CHECK ((("reviewer_id" = "auth"."uid"()) AND ("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
+   FROM ("public"."learner_trainings" "lt"
+     JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+  WHERE (("lt"."learner_id" = "learner_review_validations_v2"."learner_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"())))))))));
+
+
+
+CREATE POLICY "learner_review_validations_v2_select_admin_org" ON "public"."learner_review_validations_v2" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+   FROM ("public"."learner_trainings" "lt"
+     JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+  WHERE (("lt"."learner_id" = "learner_review_validations_v2"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
+
+
+
+CREATE POLICY "learner_review_validations_v2_select_aprendiz" ON "public"."learner_review_validations_v2" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = "auth"."uid"())));
+
+
+
+CREATE POLICY "learner_review_validations_v2_select_referente" ON "public"."learner_review_validations_v2" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+   FROM "public"."learner_trainings" "lt"
+  WHERE (("lt"."learner_id" = "learner_review_validations_v2"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))));
+
+
+
+CREATE POLICY "learner_review_validations_v2_select_superadmin" ON "public"."learner_review_validations_v2" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
 
 
 
@@ -2714,6 +2841,11 @@ GRANT ALL ON TABLE "public"."learner_future_questions" TO "service_role";
 GRANT ALL ON TABLE "public"."learner_review_decisions" TO "anon";
 GRANT ALL ON TABLE "public"."learner_review_decisions" TO "authenticated";
 GRANT ALL ON TABLE "public"."learner_review_decisions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."learner_review_validations_v2" TO "service_role";
+GRANT SELECT,INSERT ON TABLE "public"."learner_review_validations_v2" TO "authenticated";
 
 
 

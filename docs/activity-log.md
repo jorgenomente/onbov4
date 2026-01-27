@@ -936,3 +936,113 @@ Se agregan bloques de métricas (30 días) en /referente/review y cobertura por 
 - npm run lint
 - npm run build
 - npm run e2e -- referente-metrics.spec.ts
+
+## 2026-01-27 — Fase 3 Sub‑lote K: QA extendida métricas (checklist)
+
+**Tipo:** qa  
+**Alcance:** db | rls | ux | e2e
+
+**Resumen**
+Se ejecuta checklist extendido de QA para métricas accionables: smoke DB, invariantes, ventana temporal, aislamiento por local, UI smoke manual y E2E.
+
+**Resultados**
+
+- K1 Smoke views (superadmin): OK
+- K1 Invariantes: bad_rows=0, bad_levels=0, bad_rates=0
+- K1 Ventana temporal: seed-gap-old=0, seed-gap-new=1
+- K2 RLS (Referente A forzando Local B): top_gaps_b=0, learner_risk_b=0, unit_coverage_b=0
+- K3 UI smoke manual: pendiente de ejecución manual
+- K4 E2E: referente-review.spec.ts PASS, referente-metrics.spec.ts PASS
+- K5 Gate: db reset, lint, build OK
+
+## 2026-01-27 — Sub-lote L.1: Validacion humana v2 (DB + RLS)
+
+**Tipo:** feature  
+**Alcance:** db | rls | docs
+
+**Resumen**
+Se agrega la tabla append-only `learner_review_validations_v2` con enums, indices y RLS estricta para decisiones humanas v2, manteniendo v1 intacto.
+
+**Impacto**
+
+- Habilita registrar decisiones estructuradas con severidad, accion y checklist
+- Mantiene aislamiento por org/local/rol en inserts y lecturas
+- No cambia UI ni server actions existentes
+
+**Checklist**
+
+- Enums v2 creados
+- Tabla append-only con trigger prevent update/delete
+- Policies SELECT/INSERT por rol y scope
+
+## 2026-01-27 — Sub-lote L.1.1: RLS SELECT sin confiar en snapshots
+
+**Tipo:** fix  
+**Alcance:** db | rls | docs
+
+**Resumen**
+Se ajustan las policies SELECT de `learner_review_validations_v2` para admin_org y referente usando joins por learner_id a `learner_trainings`, evitando confiar en `local_id` snapshot.
+
+**Impacto**
+
+- Evita ocultar filas legitimas si el snapshot local_id es incorrecto
+- Mantiene aislamiento por org/local basado en contexto real del learner
+- No cambia UI ni server actions
+
+**Checklist**
+
+- Policies SELECT admin_org/referente ajustadas
+- Smoke RLS valido con SET ROLE authenticated + claims (primer intento como postgres invalido)
+
+## 2026-01-27 — Sub-lote L.2: Wiring server-only validacion v2
+
+**Tipo:** feature  
+**Alcance:** backend
+
+**Resumen**
+Se agrega una Server Action para insertar decisiones en `learner_review_validations_v2` derivando snapshots y perfil del revisor en server-side, sin tocar UI ni estados.
+
+**Impacto**
+
+- Inserciones v2 seguras con `auth.uid()` y datos derivados de `learner_trainings`
+- Validacion de rol permitido y estado `en_revision`
+- Sin cambios en flujos v1 ni emails
+
+**Checklist**
+
+- Server Action creada
+- No toca UI ni estados
+
+## 2026-01-27 — Smoke L.2 (RLS + app validation)
+
+**Tipo:** qa  
+**Alcance:** db | rls | backend | docs
+
+**Resumen**
+Se agrega smoke reproducible en `docs/qa/smoke-l2.sql` con RLS real (`SET ROLE authenticated` + claims) y nota de validación de aplicación para el caso fuera de `en_revision`.
+
+**Impacto**
+
+- Deja evidencia DB-first/RLS-first para L.2
+- Cubre referente OK y aprendiz FAIL por RLS
+- Documenta validación de aplicación para `en_revision`
+
+## 2026-01-27 — Sub-lote L.3: UI Referente validación v2
+
+**Tipo:** feature  
+**Alcance:** frontend | backend | ux
+
+**Resumen**
+Se agrega un bloque “Validación v2 (interna)” en el detalle de revisión con formulario mínimo y historial v2 (últimas 5), usando la Server Action v2 sin cambiar estados ni emails.
+
+**Impacto**
+
+- Referente/Admin pueden registrar validaciones v2 estructuradas desde la UI
+- Historial v2 visible con checklist y comentario
+- Mantiene flujo v1 intacto
+
+**QA manual**
+
+- Referente: /referente/review/[learnerId] -> enviar validación v2 y verla en historial
+- Aprendiz: no puede acceder a /referente/review
+- Botones v1 (aprobar/refuerzo) siguen funcionando

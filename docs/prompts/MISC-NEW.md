@@ -2,7 +2,7 @@
 
 ## Contexto
 
-Prompt inicial sin contexto especificado; requiere aclaración del objetivo.
+Solicitud inicial del usuario sin detalles adicionales.
 
 ## Prompt ejecutado
 
@@ -11,7 +11,9 @@ new
 ```
 
 Resultado esperado
-Aclarar el objetivo y definir el siguiente paso concreto (doc, migración, pantalla, etc.).
+
+Definir el alcance o requerimiento a partir de la solicitud.
 
 Notas (opcional)
+
 Pendiente de aclaracion del usuario.
