@@ -709,3 +709,17 @@ Se agrega navegación con tabs para Aprendiz y se crean páginas placeholder de 
 - Tabs visibles: Entrenamiento, Progreso, Perfil
 - No cambia lógica de entrenamiento ni datos
 - Prepara el terreno para Sub‑lotes B y C
+
+## 2026-01-27 — Progreso del aprendiz y repaso lectura
+
+**Tipo:** feature  
+**Alcance:** frontend
+
+**Resumen**
+Se implementa /learner/progress con estado, avance y lista de unidades. Se agrega /learner/review/[unitOrder] en modo lectura para repasar unidades completadas.
+
+**Impacto**
+
+- Aprendiz puede ver progreso y estado actual
+- Repaso disponible solo para unidades completadas
+- No modifica entrenamiento ni métricas
