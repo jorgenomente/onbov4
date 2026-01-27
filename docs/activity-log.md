@@ -895,3 +895,23 @@ Se declara cerrado el checkpoint de Fase 2 con views de evidencia, UI de revisi�
 - Referentes pueden revisar evidencia profunda por unidad
 - Validación de aislamiento por local realizada con seed cross-tenant
 - QA mínima completada (db reset, lint, build, e2e)
+
+## 2026-01-27 — Fase 3 Sub‑lote I: views métricas accionables (30 días)
+
+**Tipo:** feature  
+**Alcance:** db | rls
+
+**Resumen**
+Se agregan views read-only tenant-scoped para métricas accionables del referente/admin: top gaps del local, riesgo por aprendiz y cobertura por unidad (ventana 30 días).
+
+**Impacto**
+
+- Contratos listos para UI de métricas mínimas por local
+- Aislamiento por rol/local/org sin exponer a aprendiz
+- Base para Fase 3 Admin Org
+
+**QA (DB)**
+
+- Smoke OK: v_local_top_gaps_30d / v_local_learner_risk_30d / v_local_unit_coverage_30d
+- Denominador top_gaps validado (percent_learners_affected=50% con 2 learners activos)
+- RLS local OK (Referente A forzando Local B: 0 filas)

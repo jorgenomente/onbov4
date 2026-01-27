@@ -937,6 +937,339 @@ CREATE OR REPLACE VIEW "public"."v_learner_wrong_answers" AS
 ALTER VIEW "public"."v_learner_wrong_answers" OWNER TO "postgres";
 
 
+CREATE OR REPLACE VIEW "public"."v_local_learner_risk_30d" AS
+ WITH "scoped_ctx" AS (
+         SELECT "public"."current_local_id"() AS "local_id",
+            "public"."current_org_id"() AS "org_id",
+            "public"."current_role"() AS "role_name"
+        ), "practice_events" AS (
+         SELECT "pa"."local_id",
+            "pa"."learner_id",
+            "pe"."verdict",
+            "pe"."doubt_signals",
+            "pe"."created_at"
+           FROM ("public"."practice_evaluations" "pe"
+             JOIN "public"."practice_attempts" "pa" ON (("pa"."id" = "pe"."attempt_id")))
+          WHERE ("pe"."created_at" >= ("now"() - '30 days'::interval))
+        ), "final_events" AS (
+         SELECT "lt"."local_id",
+            "a"."learner_id",
+            "ev"."verdict",
+            "ev"."doubt_signals",
+            "ev"."created_at"
+           FROM (((("public"."final_evaluation_evaluations" "ev"
+             JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."id" = "ev"."answer_id")))
+             JOIN "public"."final_evaluation_questions" "q" ON (("q"."id" = "ans"."question_id")))
+             JOIN "public"."final_evaluation_attempts" "a" ON (("a"."id" = "q"."attempt_id")))
+             JOIN "public"."learner_trainings" "lt" ON ((("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id"))))
+          WHERE ("ev"."created_at" >= ("now"() - '30 days'::interval))
+        ), "scoped_practice" AS (
+         SELECT "p"."local_id",
+            "p"."learner_id",
+            "p"."verdict",
+            "p"."doubt_signals",
+            "p"."created_at"
+           FROM (("practice_events" "p"
+             JOIN "public"."locals" "l" ON (("l"."id" = "p"."local_id")))
+             CROSS JOIN "scoped_ctx" "s")
+          WHERE (("s"."role_name" = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("s"."role_name" = 'superadmin'::"public"."app_role") OR (("s"."role_name" = 'referente'::"public"."app_role") AND ("p"."local_id" = "s"."local_id")) OR (("s"."role_name" = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "s"."org_id"))))
+        ), "scoped_final" AS (
+         SELECT "f"."local_id",
+            "f"."learner_id",
+            "f"."verdict",
+            "f"."doubt_signals",
+            "f"."created_at"
+           FROM (("final_events" "f"
+             JOIN "public"."locals" "l" ON (("l"."id" = "f"."local_id")))
+             CROSS JOIN "scoped_ctx" "s")
+          WHERE (("s"."role_name" = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("s"."role_name" = 'superadmin'::"public"."app_role") OR (("s"."role_name" = 'referente'::"public"."app_role") AND ("f"."local_id" = "s"."local_id")) OR (("s"."role_name" = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "s"."org_id"))))
+        ), "practice_agg" AS (
+         SELECT "scoped_practice"."local_id",
+            "scoped_practice"."learner_id",
+            ("count"(*) FILTER (WHERE ("scoped_practice"."verdict" = 'fail'::"text")))::integer AS "failed_practice_count",
+            ("count"(*) FILTER (WHERE ("scoped_practice"."verdict" = 'partial'::"text")))::integer AS "partial_practice_count",
+            ("sum"(COALESCE("array_length"("scoped_practice"."doubt_signals", 1), 0)))::integer AS "practice_doubt_signals_count",
+            "max"("scoped_practice"."created_at") AS "last_practice_at"
+           FROM "scoped_practice"
+          GROUP BY "scoped_practice"."local_id", "scoped_practice"."learner_id"
+        ), "final_agg" AS (
+         SELECT "scoped_final"."local_id",
+            "scoped_final"."learner_id",
+            ("count"(*) FILTER (WHERE ("scoped_final"."verdict" = 'fail'::"text")))::integer AS "failed_final_count",
+            ("count"(*) FILTER (WHERE ("scoped_final"."verdict" = 'partial'::"text")))::integer AS "partial_final_count",
+            ("sum"(COALESCE("array_length"("scoped_final"."doubt_signals", 1), 0)))::integer AS "final_doubt_signals_count",
+            "max"("scoped_final"."created_at") AS "last_final_at"
+           FROM "scoped_final"
+          GROUP BY "scoped_final"."local_id", "scoped_final"."learner_id"
+        ), "merged" AS (
+         SELECT COALESCE("p"."local_id", "f"."local_id") AS "local_id",
+            COALESCE("p"."learner_id", "f"."learner_id") AS "learner_id",
+            COALESCE("p"."failed_practice_count", 0) AS "failed_practice_count",
+            COALESCE("f"."failed_final_count", 0) AS "failed_final_count",
+            (COALESCE("p"."practice_doubt_signals_count", 0) + COALESCE("f"."final_doubt_signals_count", 0)) AS "doubt_signals_count",
+            GREATEST(COALESCE("p"."last_practice_at", '1970-01-01 00:00:00+00'::timestamp with time zone), COALESCE("f"."last_final_at", '1970-01-01 00:00:00+00'::timestamp with time zone)) AS "last_activity_at"
+           FROM ("practice_agg" "p"
+             FULL JOIN "final_agg" "f" ON ((("f"."local_id" = "p"."local_id") AND ("f"."learner_id" = "p"."learner_id"))))
+        )
+ SELECT "local_id",
+    "learner_id",
+    "failed_practice_count",
+    "failed_final_count",
+    "doubt_signals_count",
+    NULLIF("last_activity_at", '1970-01-01 00:00:00+00'::timestamp with time zone) AS "last_activity_at",
+        CASE
+            WHEN (("failed_final_count" >= 1) OR ("failed_practice_count" >= 3) OR ("doubt_signals_count" >= 3)) THEN 'high'::"text"
+            WHEN ((("failed_practice_count" >= 1) AND ("failed_practice_count" <= 2)) OR (("doubt_signals_count" >= 1) AND ("doubt_signals_count" <= 2))) THEN 'medium'::"text"
+            ELSE 'low'::"text"
+        END AS "risk_level",
+    "array_remove"(ARRAY[
+        CASE
+            WHEN ("failed_final_count" >= 1) THEN 'failed_final>=1'::"text"
+            ELSE NULL::"text"
+        END,
+        CASE
+            WHEN ("failed_practice_count" >= 3) THEN 'failed_practice>=3'::"text"
+            ELSE NULL::"text"
+        END,
+        CASE
+            WHEN ("doubt_signals_count" >= 3) THEN 'doubt_signals>=3'::"text"
+            ELSE NULL::"text"
+        END,
+        CASE
+            WHEN (("failed_practice_count" >= 1) AND ("failed_practice_count" <= 2)) THEN 'failed_practice=1..2'::"text"
+            ELSE NULL::"text"
+        END,
+        CASE
+            WHEN (("doubt_signals_count" >= 1) AND ("doubt_signals_count" <= 2)) THEN 'doubt_signals=1..2'::"text"
+            ELSE NULL::"text"
+        END], NULL::"text") AS "reasons"
+   FROM "merged" "m";
+
+
+ALTER VIEW "public"."v_local_learner_risk_30d" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."v_local_top_gaps_30d" AS
+ WITH "scoped_local" AS (
+         SELECT "public"."current_local_id"() AS "local_id",
+            "public"."current_org_id"() AS "org_id",
+            "public"."current_role"() AS "role_name"
+        ), "practice_gaps" AS (
+         SELECT "pa"."local_id",
+            "pa"."learner_id",
+            "unnest"("pe"."gaps") AS "gap",
+            "pe"."created_at"
+           FROM ("public"."practice_evaluations" "pe"
+             JOIN "public"."practice_attempts" "pa" ON (("pa"."id" = "pe"."attempt_id")))
+          WHERE (("pe"."created_at" >= ("now"() - '30 days'::interval)) AND (COALESCE("array_length"("pe"."gaps", 1), 0) > 0))
+        ), "final_gaps" AS (
+         SELECT "lt"."local_id",
+            "a_1"."learner_id",
+            "unnest"("ev"."gaps") AS "gap",
+            "ev"."created_at"
+           FROM (((("public"."final_evaluation_evaluations" "ev"
+             JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."id" = "ev"."answer_id")))
+             JOIN "public"."final_evaluation_questions" "q" ON (("q"."id" = "ans"."question_id")))
+             JOIN "public"."final_evaluation_attempts" "a_1" ON (("a_1"."id" = "q"."attempt_id")))
+             JOIN "public"."learner_trainings" "lt" ON ((("lt"."learner_id" = "a_1"."learner_id") AND ("lt"."program_id" = "a_1"."program_id"))))
+          WHERE (("ev"."created_at" >= ("now"() - '30 days'::interval)) AND (COALESCE("array_length"("ev"."gaps", 1), 0) > 0))
+        ), "unioned" AS (
+         SELECT "practice_gaps"."local_id",
+            "practice_gaps"."learner_id",
+            "practice_gaps"."gap",
+            "practice_gaps"."created_at"
+           FROM "practice_gaps"
+        UNION ALL
+         SELECT "final_gaps"."local_id",
+            "final_gaps"."learner_id",
+            "final_gaps"."gap",
+            "final_gaps"."created_at"
+           FROM "final_gaps"
+        ), "scoped" AS (
+         SELECT "u"."local_id",
+            "u"."learner_id",
+            "u"."gap",
+            "u"."created_at"
+           FROM (("unioned" "u"
+             JOIN "public"."locals" "l" ON (("l"."id" = "u"."local_id")))
+             CROSS JOIN "scoped_local" "s")
+          WHERE (("s"."role_name" = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("s"."role_name" = 'superadmin'::"public"."app_role") OR (("s"."role_name" = 'referente'::"public"."app_role") AND ("u"."local_id" = "s"."local_id")) OR (("s"."role_name" = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "s"."org_id"))))
+        ), "practice_activity" AS (
+         SELECT "pa"."local_id",
+            "pa"."learner_id",
+            "pe"."created_at"
+           FROM ("public"."practice_evaluations" "pe"
+             JOIN "public"."practice_attempts" "pa" ON (("pa"."id" = "pe"."attempt_id")))
+          WHERE ("pe"."created_at" >= ("now"() - '30 days'::interval))
+        ), "final_activity" AS (
+         SELECT "lt"."local_id",
+            "a_1"."learner_id",
+            "ev"."created_at"
+           FROM (((("public"."final_evaluation_evaluations" "ev"
+             JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."id" = "ev"."answer_id")))
+             JOIN "public"."final_evaluation_questions" "q" ON (("q"."id" = "ans"."question_id")))
+             JOIN "public"."final_evaluation_attempts" "a_1" ON (("a_1"."id" = "q"."attempt_id")))
+             JOIN "public"."learner_trainings" "lt" ON ((("lt"."learner_id" = "a_1"."learner_id") AND ("lt"."program_id" = "a_1"."program_id"))))
+          WHERE ("ev"."created_at" >= ("now"() - '30 days'::interval))
+        ), "activity_union" AS (
+         SELECT "practice_activity"."local_id",
+            "practice_activity"."learner_id",
+            "practice_activity"."created_at"
+           FROM "practice_activity"
+        UNION ALL
+         SELECT "final_activity"."local_id",
+            "final_activity"."learner_id",
+            "final_activity"."created_at"
+           FROM "final_activity"
+        ), "activity_scoped" AS (
+         SELECT "a_1"."local_id",
+            "a_1"."learner_id",
+            "a_1"."created_at"
+           FROM (("activity_union" "a_1"
+             JOIN "public"."locals" "l" ON (("l"."id" = "a_1"."local_id")))
+             CROSS JOIN "scoped_local" "s")
+          WHERE (("s"."role_name" = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("s"."role_name" = 'superadmin'::"public"."app_role") OR (("s"."role_name" = 'referente'::"public"."app_role") AND ("a_1"."local_id" = "s"."local_id")) OR (("s"."role_name" = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "s"."org_id"))))
+        ), "local_learners" AS (
+         SELECT DISTINCT "activity_scoped"."learner_id"
+           FROM "activity_scoped"
+        ), "agg" AS (
+         SELECT "scoped"."local_id",
+            "scoped"."gap",
+            ("count"(*))::integer AS "count_total",
+            ("count"(DISTINCT "scoped"."learner_id"))::integer AS "learners_affected",
+            "max"("scoped"."created_at") AS "last_seen_at"
+           FROM "scoped"
+          GROUP BY "scoped"."local_id", "scoped"."gap"
+        ), "denom" AS (
+         SELECT ("count"(*))::integer AS "local_learner_count"
+           FROM "local_learners"
+        )
+ SELECT "a"."local_id",
+    "a"."gap",
+    "a"."count_total",
+    "a"."learners_affected",
+        CASE
+            WHEN ("d"."local_learner_count" = 0) THEN (0)::numeric
+            ELSE "round"(((("a"."learners_affected")::numeric / ("d"."local_learner_count")::numeric) * (100)::numeric), 2)
+        END AS "percent_learners_affected",
+    "a"."last_seen_at"
+   FROM ("agg" "a"
+     CROSS JOIN "denom" "d");
+
+
+ALTER VIEW "public"."v_local_top_gaps_30d" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."v_local_unit_coverage_30d" AS
+ WITH "ctx" AS (
+         SELECT "public"."current_local_id"() AS "local_id",
+            "public"."current_org_id"() AS "org_id",
+            "public"."current_role"() AS "role_name"
+        ), "practice_scoped" AS (
+         SELECT "pa"."local_id",
+            "ps"."program_id",
+            "ps"."unit_order",
+            "pe"."score",
+            "pe"."verdict",
+            "pe"."gaps",
+            "pe"."created_at"
+           FROM (("public"."practice_evaluations" "pe"
+             JOIN "public"."practice_attempts" "pa" ON (("pa"."id" = "pe"."attempt_id")))
+             JOIN "public"."practice_scenarios" "ps" ON (("ps"."id" = "pa"."scenario_id")))
+          WHERE ("pe"."created_at" >= ("now"() - '30 days'::interval))
+        ), "final_scoped" AS (
+         SELECT "lt"."local_id",
+            "a"."program_id",
+            "ev"."unit_order",
+            "ev"."score",
+            "ev"."verdict",
+            "ev"."gaps",
+            "ev"."created_at"
+           FROM (((("public"."final_evaluation_evaluations" "ev"
+             JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."id" = "ev"."answer_id")))
+             JOIN "public"."final_evaluation_questions" "q" ON (("q"."id" = "ans"."question_id")))
+             JOIN "public"."final_evaluation_attempts" "a" ON (("a"."id" = "q"."attempt_id")))
+             JOIN "public"."learner_trainings" "lt" ON ((("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id"))))
+          WHERE ("ev"."created_at" >= ("now"() - '30 days'::interval))
+        ), "practice_filtered" AS (
+         SELECT "p_1"."local_id",
+            "p_1"."program_id",
+            "p_1"."unit_order",
+            "p_1"."score",
+            "p_1"."verdict",
+            "p_1"."gaps",
+            "p_1"."created_at"
+           FROM (("practice_scoped" "p_1"
+             JOIN "public"."locals" "l" ON (("l"."id" = "p_1"."local_id")))
+             CROSS JOIN "ctx" "c")
+          WHERE (("c"."role_name" = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("c"."role_name" = 'superadmin'::"public"."app_role") OR (("c"."role_name" = 'referente'::"public"."app_role") AND ("p_1"."local_id" = "c"."local_id")) OR (("c"."role_name" = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "c"."org_id"))))
+        ), "final_filtered" AS (
+         SELECT "f_1"."local_id",
+            "f_1"."program_id",
+            "f_1"."unit_order",
+            "f_1"."score",
+            "f_1"."verdict",
+            "f_1"."gaps",
+            "f_1"."created_at"
+           FROM (("final_scoped" "f_1"
+             JOIN "public"."locals" "l" ON (("l"."id" = "f_1"."local_id")))
+             CROSS JOIN "ctx" "c")
+          WHERE (("c"."role_name" = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("c"."role_name" = 'superadmin'::"public"."app_role") OR (("c"."role_name" = 'referente'::"public"."app_role") AND ("f_1"."local_id" = "c"."local_id")) OR (("c"."role_name" = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "c"."org_id"))))
+        ), "practice_unit" AS (
+         SELECT "practice_filtered"."local_id",
+            "practice_filtered"."program_id",
+            "practice_filtered"."unit_order",
+            ("avg"("practice_filtered"."score"))::numeric(5,2) AS "avg_practice_score",
+            (("count"(*) FILTER (WHERE ("practice_filtered"."verdict" = 'fail'::"text")))::numeric / NULLIF(("count"(*))::numeric, (0)::numeric)) AS "practice_fail_rate"
+           FROM "practice_filtered"
+          GROUP BY "practice_filtered"."local_id", "practice_filtered"."program_id", "practice_filtered"."unit_order"
+        ), "final_unit" AS (
+         SELECT "final_filtered"."local_id",
+            "final_filtered"."program_id",
+            "final_filtered"."unit_order",
+            ("avg"("final_filtered"."score"))::numeric(5,2) AS "avg_final_score",
+            (("count"(*) FILTER (WHERE ("final_filtered"."verdict" = 'fail'::"text")))::numeric / NULLIF(("count"(*))::numeric, (0)::numeric)) AS "final_fail_rate"
+           FROM "final_filtered"
+          GROUP BY "final_filtered"."local_id", "final_filtered"."program_id", "final_filtered"."unit_order"
+        ), "gaps_union" AS (
+         SELECT "practice_filtered"."local_id",
+            "practice_filtered"."program_id",
+            "practice_filtered"."unit_order",
+            "unnest"("practice_filtered"."gaps") AS "gap"
+           FROM "practice_filtered"
+          WHERE (COALESCE("array_length"("practice_filtered"."gaps", 1), 0) > 0)
+        UNION ALL
+         SELECT "final_filtered"."local_id",
+            "final_filtered"."program_id",
+            "final_filtered"."unit_order",
+            "unnest"("final_filtered"."gaps") AS "gap"
+           FROM "final_filtered"
+          WHERE (COALESCE("array_length"("final_filtered"."gaps", 1), 0) > 0)
+        ), "top_gap" AS (
+         SELECT DISTINCT ON ("gaps_union"."local_id", "gaps_union"."program_id", "gaps_union"."unit_order") "gaps_union"."local_id",
+            "gaps_union"."program_id",
+            "gaps_union"."unit_order",
+            "gaps_union"."gap" AS "top_gap",
+            "count"(*) OVER (PARTITION BY "gaps_union"."local_id", "gaps_union"."program_id", "gaps_union"."unit_order", "gaps_union"."gap") AS "gap_count"
+           FROM "gaps_union"
+          ORDER BY "gaps_union"."local_id", "gaps_union"."program_id", "gaps_union"."unit_order", ("count"(*) OVER (PARTITION BY "gaps_union"."local_id", "gaps_union"."program_id", "gaps_union"."unit_order", "gaps_union"."gap")) DESC, "gaps_union"."gap"
+        )
+ SELECT COALESCE("p"."local_id", "f"."local_id") AS "local_id",
+    COALESCE("p"."program_id", "f"."program_id") AS "program_id",
+    COALESCE("p"."unit_order", "f"."unit_order") AS "unit_order",
+    "p"."avg_practice_score",
+    "f"."avg_final_score",
+    "round"(COALESCE("p"."practice_fail_rate", (0)::numeric), 4) AS "practice_fail_rate",
+    "round"(COALESCE("f"."final_fail_rate", (0)::numeric), 4) AS "final_fail_rate",
+    "tg"."top_gap"
+   FROM (("practice_unit" "p"
+     FULL JOIN "final_unit" "f" ON ((("f"."local_id" = "p"."local_id") AND ("f"."program_id" = "p"."program_id") AND ("f"."unit_order" = "p"."unit_order"))))
+     LEFT JOIN "top_gap" "tg" ON ((("tg"."local_id" = COALESCE("p"."local_id", "f"."local_id")) AND ("tg"."program_id" = COALESCE("p"."program_id", "f"."program_id")) AND ("tg"."unit_order" = COALESCE("p"."unit_order", "f"."unit_order")))));
+
+
+ALTER VIEW "public"."v_local_unit_coverage_30d" OWNER TO "postgres";
+
+
 CREATE OR REPLACE VIEW "public"."v_referente_conversation_summary" AS
  SELECT "c"."id" AS "conversation_id",
     "c"."learner_id",
@@ -2513,6 +2846,24 @@ GRANT ALL ON TABLE "public"."v_learner_training_home" TO "service_role";
 GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "anon";
 GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_local_learner_risk_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_local_learner_risk_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_local_learner_risk_30d" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_local_top_gaps_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_local_top_gaps_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_local_top_gaps_30d" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "service_role";
 
 
 
