@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { requireUserAndRole } from '../../lib/server/requireRole';
+import LearnerTabs from './LearnerTabs';
 
 type LearnerLayoutProps = {
   children: React.ReactNode;
@@ -29,6 +30,7 @@ export default async function LearnerLayout({ children }: LearnerLayoutProps) {
           </Link>
         </div>
       </header>
+      <LearnerTabs />
       {children}
     </div>
   );

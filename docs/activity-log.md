@@ -695,3 +695,17 @@ Se explicita en AGENTS.md que los snapshots de DB deben regenerarse y commitears
 - Evita desalineación entre schema real y docs
 - Refuerza trazabilidad técnica
 - No cambia comportamiento funcional
+
+## 2026-01-27 — Shell de navegación Aprendiz con tabs
+
+**Tipo:** feature  
+**Alcance:** frontend
+
+**Resumen**
+Se agrega navegación con tabs para Aprendiz y se crean páginas placeholder de Progreso y Perfil.
+
+**Impacto**
+
+- Tabs visibles: Entrenamiento, Progreso, Perfil
+- No cambia lógica de entrenamiento ni datos
+- Prepara el terreno para Sub‑lotes B y C
