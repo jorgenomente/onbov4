@@ -667,3 +667,31 @@ Las acciones de aprobar/pedir refuerzo revalidan rutas y redirigen al detalle pa
 - Historial se actualiza al instante en /referente/review/[id]
 - La cola de revisión también se revalida
 - No cambia lógica de decisiones ni emails
+
+## 2026-01-27 — Roadmap post‑MVP registrado
+
+**Tipo:** docs  
+**Alcance:** docs
+
+**Resumen**
+Se incorpora `docs/roadmap-product-final.md` como plan operativo post‑MVP y se referencia en AGENTS.md.
+
+**Impacto**
+
+- Fuente adicional de contexto para continuar el desarrollo
+- Define fases y checkpoints hacia producto final
+- No cambia comportamiento funcional
+
+## 2026-01-27 — Regla de regeneración de docs de DB
+
+**Tipo:** docs  
+**Alcance:** docs
+
+**Resumen**
+Se explicita en AGENTS.md que los snapshots de DB deben regenerarse y commitearse ante cualquier cambio en migraciones, tablas, policies, views o funciones.
+
+**Impacto**
+
+- Evita desalineación entre schema real y docs
+- Refuerza trazabilidad técnica
+- No cambia comportamiento funcional

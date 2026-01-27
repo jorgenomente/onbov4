@@ -76,6 +76,7 @@
 | learner_review_decisions         | decision            | text                     | true     |                                    |
 | learner_review_decisions         | reason              | text                     | true     |                                    |
 | learner_review_decisions         | created_at          | timestamp with time zone | true     | now()                              |
+| learner_review_decisions         | reviewer_name       | text                     | false    |                                    |
 | learner_state_transitions        | id                  | uuid                     | true     | gen_random_uuid()                  |
 | learner_state_transitions        | learner_id          | uuid                     | true     |                                    |
 | learner_state_transitions        | from_status         | USER-DEFINED             | false    |                                    |
@@ -367,9 +368,7 @@
 | FROM (learner_trainings lt                                                                                                                                                                                                                    |         |                                                                                                                                                                                                               |            |
 | JOIN locals l ON ((l.id = lt.local_id)))                                                                                                                                                                                                      |         |                                                                                                                                                                                                               |            |
 | WHERE ((lt.learner_id = learner_review_decisions.learner_id) AND (l.org_id = current_org_id())))))                                                                                                                                            |         |                                                                                                                                                                                                               |            |
-| learner_review_decisions_select_aprendiz_latest                                                                                                                                                                                               | SELECT  | (("current_role"() = 'aprendiz'::app_role) AND (learner_id = auth.uid()) AND (NOT (EXISTS ( SELECT 1                                                                                                          |            |
-| FROM learner_review_decisions newer                                                                                                                                                                                                           |         |                                                                                                                                                                                                               |            |
-| WHERE ((newer.learner_id = learner_review_decisions.learner_id) AND (newer.created_at > learner_review_decisions.created_at))))))                                                                                                             |         |                                                                                                                                                                                                               |            |
+| learner_review_decisions_select_aprendiz                                                                                                                                                                                                      | SELECT  | (("current_role"() = 'aprendiz'::app_role) AND (learner_id = auth.uid()))                                                                                                                                     |            |
 | learner_review_decisions_select_referente                                                                                                                                                                                                     | SELECT  | (("current_role"() = 'referente'::app_role) AND (EXISTS ( SELECT 1                                                                                                                                            |            |
 | FROM learner_trainings lt                                                                                                                                                                                                                     |         |                                                                                                                                                                                                               |            |
 | WHERE ((lt.learner_id = learner_review_decisions.learner_id) AND (lt.local_id = current_local_id())))))                                                                                                                                       |         |                                                                                                                                                                                                               |            |
@@ -538,10 +537,13 @@
 
 - RLS: enabled
 
-| policy_name         | command | using                  | with_check             |
-| ------------------- | ------- | ---------------------- | ---------------------- |
-| profiles_select_own | SELECT  | (user_id = auth.uid()) |                        |
-| profiles_update_own | UPDATE  | (user_id = auth.uid()) | (user_id = auth.uid()) |
+| policy_name                | command | using                                                                            | with_check             |
+| -------------------------- | ------- | -------------------------------------------------------------------------------- | ---------------------- |
+| profiles_select_admin_org  | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))     |                        |
+| profiles_select_own        | SELECT  | (user_id = auth.uid())                                                           |                        |
+| profiles_select_referente  | SELECT  | (("current_role"() = 'referente'::app_role) AND (local_id = current_local_id())) |                        |
+| profiles_select_superadmin | SELECT  | ("current_role"() = 'superadmin'::app_role)                                      |                        |
+| profiles_update_own        | UPDATE  | (user_id = auth.uid())                                                           | (user_id = auth.uid()) |
 
 ### training_programs
 

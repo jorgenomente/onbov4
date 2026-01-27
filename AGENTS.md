@@ -54,7 +54,9 @@ Antes de escribir cualquier código, la IA **DEBE** leer y respetar:
    → **Documento Maestro del Producto ONBO (fuente principal)**
 2. `docs/plan-mvp.md` _(cuando exista)_
    → Orden de ejecución y fases del MVP
-3. `AGENTS.md`
+3. `docs/roadmap-product-final.md`
+   → **Roadmap post‑MVP hacia producto final (contexto operativo y checkpoints)**
+4. `AGENTS.md`
    → Reglas de comportamiento de la IA
 
 ### Regla de precedencia
@@ -63,7 +65,8 @@ Si existe contradicción:
 
 1. Documento Maestro del Producto **gana**
 2. Plan MVP
-3. AGENTS.md
+3. Roadmap producto final
+4. AGENTS.md
 
 La IA **NO puede reinterpretar requisitos** ni “mejorarlos”.
 
@@ -82,6 +85,8 @@ Regeneración obligatoria cuando cambien migraciones, tablas o policies:
 
 - `npm run db:dictionary`
 - `npm run db:dump:schema`
+
+**Regla operativa:** cada vez que se agregue o modifique algo en la DB (migración, tabla, policy, view o función), se deben ejecutar ambos comandos y commitear los cambios en `docs/db/`.
 
 ---
 

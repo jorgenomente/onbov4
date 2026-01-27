@@ -47,7 +47,9 @@ ALTER TYPE "public"."learner_status" OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."current_local_id"() RETURNS "uuid"
-    LANGUAGE "sql" STABLE
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    SET "row_security" TO 'off'
     AS $$
   select p.local_id
   from public.profiles p
@@ -60,7 +62,9 @@ ALTER FUNCTION "public"."current_local_id"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."current_org_id"() RETURNS "uuid"
-    LANGUAGE "sql" STABLE
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    SET "row_security" TO 'off'
     AS $$
   select p.org_id
   from public.profiles p
@@ -73,7 +77,9 @@ ALTER FUNCTION "public"."current_org_id"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."current_profile"() RETURNS TABLE("user_id" "uuid", "org_id" "uuid", "local_id" "uuid", "role" "public"."app_role", "full_name" "text", "created_at" timestamp with time zone, "updated_at" timestamp with time zone)
-    LANGUAGE "sql" STABLE
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    SET "row_security" TO 'off'
     AS $$
   select
     p.user_id,
@@ -93,7 +99,9 @@ ALTER FUNCTION "public"."current_profile"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."current_role"() RETURNS "public"."app_role"
-    LANGUAGE "sql" STABLE
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    SET "row_security" TO 'off'
     AS $$
   select p.role
   from public.profiles p
@@ -360,6 +368,7 @@ CREATE TABLE IF NOT EXISTS "public"."learner_review_decisions" (
     "decision" "text" NOT NULL,
     "reason" "text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "reviewer_name" "text",
     CONSTRAINT "learner_review_decisions_decision_check" CHECK (("decision" = ANY (ARRAY['approved'::"text", 'needs_reinforcement'::"text"])))
 );
 
@@ -1587,9 +1596,7 @@ CREATE POLICY "learner_review_decisions_select_admin_org" ON "public"."learner_r
 
 
 
-CREATE POLICY "learner_review_decisions_select_aprendiz_latest" ON "public"."learner_review_decisions" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = "auth"."uid"()) AND (NOT (EXISTS ( SELECT 1
-   FROM "public"."learner_review_decisions" "newer"
-  WHERE (("newer"."learner_id" = "learner_review_decisions"."learner_id") AND ("newer"."created_at" > "learner_review_decisions"."created_at")))))));
+CREATE POLICY "learner_review_decisions_select_aprendiz" ON "public"."learner_review_decisions" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = "auth"."uid"())));
 
 
 
@@ -1854,7 +1861,19 @@ CREATE POLICY "practice_scenarios_select_superadmin" ON "public"."practice_scena
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "profiles_select_admin_org" ON "public"."profiles" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
+
+
+
 CREATE POLICY "profiles_select_own" ON "public"."profiles" FOR SELECT USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "profiles_select_referente" ON "public"."profiles" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
+
+
+
+CREATE POLICY "profiles_select_superadmin" ON "public"."profiles" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
 
 
 
