@@ -1,6 +1,7 @@
 -- Smoke: Post-MVP3 D.2 guardrail create_final_evaluation_config
 -- Caso A: sin intento activo -> RPC OK
 -- Caso B: con intento activo -> RPC FAIL (conflict)
+-- Nota: attempt_number es NOT NULL (usamos 99).
 
 -- ------------------------------------------------------------
 -- Setup: elegir program_id y learner_id validos (seed demo)
@@ -34,14 +35,18 @@ insert into public.final_evaluation_attempts (
   id,
   learner_id,
   program_id,
+  attempt_number,
   status,
+  started_at,
   created_at
 )
 values (
   gen_random_uuid(),
   '<LEARNER_UUID>'::uuid,
   '<PROGRAM_UUID>'::uuid,
+  99,
   'in_progress',
+  now(),
   now()
 );
 

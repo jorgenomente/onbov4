@@ -1290,3 +1290,16 @@ Se ejecutan smokes DB-first: L2 (RLS review v2), D2 (guardrail config in_progres
 
 - Evidencia reproducible de seguridad y guardrails críticos
 - Base operable para UI Admin sin riesgo de bypass
+
+## 2026-01-28 — QA: harden smokes D.2 y E.1
+
+**Tipo:** docs  
+**Alcance:** qa
+
+**Resumen**
+Se ajustan smokes DB-first: D.2 agrega attempt_number explícito; E.1 suma query de locales + programas elegibles para evitar fallos por selección inválida.
+
+**Impacto**
+
+- Smokes copy/paste sin sorpresas
+- Menos fricción al repetir QA
