@@ -1443,3 +1443,17 @@ Se agregan views de outcomes 7d vs 30d para acciones sugeridas y se muestra el e
 - Cierre de loop medir → actuar → verificar
 - Fallback explícito cuando no hay señal 7d
 - Sin writes ni lógica dinámica
+
+## 2026-01-28 — QA DB-first Post-MVP5 (M1–M5)
+
+**Tipo:** docs  
+**Alcance:** qa
+
+**Resumen**
+Se ejecutan smokes DB-first para M1–M5 con resultados PASS en todos los casos. M5 usa fallback sin señal 7d (score_7d NULL) por falta de fuente temporal 7d.
+
+**Impacto**
+
+- Evidencia reproducible de métricas y playbooks Post-MVP5
+- Validación de outcomes y joins sin errores
+- QA cerrada para continuar sub-lotes
