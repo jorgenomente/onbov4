@@ -1108,3 +1108,23 @@ Se elimina el uso de service_role y se habilita INSERT limitado para aprendiz so
 - Inserción de eventos desde sesión del aprendiz sin llaves privilegiadas
 - Mantiene Zero Trust y snapshot coherente
 - Sin cambios de UI ni notificaciones
+
+## 2026-01-28 — Sub-lote M.3: inbox interno de alertas
+
+**Tipo:** feature  
+**Alcance:** frontend | backend | ux
+
+**Resumen**
+Se agrega /referente/alerts como bandeja read-only de alert_events con joins a profiles, y un entry point en la navegación del referente.
+
+**Impacto**
+
+- Referente/Admin ven eventos recientes sin notificaciones externas
+- Links contextuales hacia /referente/review/[learnerId]
+- Sin writes ni cambios de estado
+
+**QA manual**
+
+- Referente: ver solo eventos de su local
+- Admin Org: ver eventos de toda la org
+- Links llevan al detalle del learner
