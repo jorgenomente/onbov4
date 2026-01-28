@@ -1303,3 +1303,31 @@ Se ajustan smokes DB-first: D.2 agrega attempt_number explícito; E.1 suma query
 
 - Smokes copy/paste sin sorpresas
 - Menos fricción al repetir QA
+
+## 2026-01-28 — Post-MVP3 cierre formal
+
+**Tipo:** docs  
+**Alcance:** producto
+
+**Resumen**
+Se cierra formalmente Post-MVP 3 con QA DB-first completo (L2, D2, E1) y entregables en main.
+
+**Impacto**
+
+- Base operativa estable para avanzar a Post-MVP 4
+- Guardrails críticos auditados
+- Sin deuda abierta en la fase
+
+## 2026-01-28 — Post-MVP4 K1: knowledge coverage (views + UI read-only)
+
+**Tipo:** feature  
+**Alcance:** db | frontend | ux | docs
+
+**Resumen**
+Se agregan views read-only para cobertura de knowledge por unidad y gaps por programa, junto a UI Admin Org en /org/config/knowledge-coverage.
+
+**Impacto**
+
+- Visibilidad operativa de gaps que rompen el bot
+- Sin writes ni cambios de engine
+- Lectura multi-tenant via RLS

@@ -1653,28 +1653,77 @@ COMMENT ON VIEW "public"."v_org_program_final_eval_config_history" IS 'Post-MVP3
 
 CREATE OR REPLACE VIEW "public"."v_org_program_unit_knowledge_coverage" WITH ("security_barrier"='true') AS
  SELECT "tp"."id" AS "program_id",
-    "tp"."org_id",
-    "tp"."local_id" AS "program_local_id",
     "tp"."name" AS "program_name",
     "tu"."id" AS "unit_id",
     "tu"."unit_order",
     "tu"."title" AS "unit_title",
-    "count"("ukm"."knowledge_id") AS "knowledge_total",
-    "count"("ki"."id") FILTER (WHERE ("ki"."local_id" IS NULL)) AS "knowledge_org_scoped",
-    "count"("ki"."id") FILTER (WHERE ("ki"."local_id" IS NOT NULL)) AS "knowledge_local_scoped",
-    ("count"("ukm"."knowledge_id") = 0) AS "is_missing_knowledge_mapping"
+    "count"("ki"."id") AS "total_knowledge_count",
+    "count"("ki"."id") FILTER (WHERE ("ki"."local_id" IS NULL)) AS "org_level_knowledge_count",
+    "count"("ki"."id") FILTER (WHERE (("tp"."local_id" IS NOT NULL) AND ("ki"."local_id" = "tp"."local_id"))) AS "local_level_knowledge_count",
+    ("count"("ukm"."knowledge_id") > 0) AS "has_any_mapping",
+    ("count"("ukm"."knowledge_id") = 0) AS "is_missing_mapping"
    FROM ((("public"."training_programs" "tp"
      JOIN "public"."training_units" "tu" ON (("tu"."program_id" = "tp"."id")))
      LEFT JOIN "public"."unit_knowledge_map" "ukm" ON (("ukm"."unit_id" = "tu"."id")))
      LEFT JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
-  GROUP BY "tp"."id", "tp"."org_id", "tp"."local_id", "tp"."name", "tu"."id", "tu"."unit_order", "tu"."title"
+  WHERE ("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role", 'referente'::"public"."app_role"]))
+  GROUP BY "tp"."id", "tp"."name", "tu"."id", "tu"."unit_order", "tu"."title"
   ORDER BY "tp"."id", "tu"."unit_order";
 
 
 ALTER VIEW "public"."v_org_program_unit_knowledge_coverage" OWNER TO "postgres";
 
 
-COMMENT ON VIEW "public"."v_org_program_unit_knowledge_coverage" IS 'Post-MVP3 B.1: Coverage de knowledge por unidad (counts + flag is_missing_knowledge_mapping). Read-only; tenant-scoped por RLS.';
+COMMENT ON VIEW "public"."v_org_program_unit_knowledge_coverage" IS 'Post-MVP4 K1: Coverage de knowledge por unidad. local_level_knowledge_count solo se computa si training_programs.local_id no es NULL; para programas org-level se reporta 0.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_program_knowledge_gaps_summary" WITH ("security_barrier"='true') AS
+ SELECT "program_id",
+    "program_name",
+    ("count"(*))::integer AS "total_units",
+    ("count"(*) FILTER (WHERE "is_missing_mapping"))::integer AS "units_missing_mapping",
+        CASE
+            WHEN ("count"(*) = 0) THEN (0)::numeric
+            ELSE "round"(((("count"(*) FILTER (WHERE "is_missing_mapping"))::numeric / ("count"(*))::numeric) * (100)::numeric), 2)
+        END AS "pct_units_missing_mapping",
+    ("sum"("total_knowledge_count"))::integer AS "total_knowledge_mappings"
+   FROM "public"."v_org_program_unit_knowledge_coverage"
+  WHERE ("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role", 'referente'::"public"."app_role"]))
+  GROUP BY "program_id", "program_name";
+
+
+ALTER VIEW "public"."v_org_program_knowledge_gaps_summary" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_program_knowledge_gaps_summary" IS 'Post-MVP4 K1: Resumen de gaps por programa (unidades, gaps, % gaps, mappings totales).';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_unit_knowledge_list" WITH ("security_barrier"='true') AS
+ SELECT "tp"."id" AS "program_id",
+    "tp"."name" AS "program_name",
+    "tu"."id" AS "unit_id",
+    "tu"."unit_order",
+    "ki"."id" AS "knowledge_id",
+    "ki"."title" AS "knowledge_title",
+        CASE
+            WHEN ("ki"."local_id" IS NULL) THEN 'org'::"text"
+            ELSE 'local'::"text"
+        END AS "knowledge_scope",
+    "ki"."created_at" AS "knowledge_created_at"
+   FROM ((("public"."training_programs" "tp"
+     JOIN "public"."training_units" "tu" ON (("tu"."program_id" = "tp"."id")))
+     JOIN "public"."unit_knowledge_map" "ukm" ON (("ukm"."unit_id" = "tu"."id")))
+     JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
+  WHERE ("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role", 'referente'::"public"."app_role"]))
+  ORDER BY "tp"."id", "tu"."unit_order", "ki"."created_at" DESC;
+
+
+ALTER VIEW "public"."v_org_unit_knowledge_list" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_unit_knowledge_list" IS 'Post-MVP4 K1: Knowledge asociado por unidad (drill-down, read-only).';
 
 
 
@@ -3555,6 +3604,18 @@ GRANT ALL ON TABLE "public"."v_org_program_final_eval_config_history" TO "servic
 GRANT ALL ON TABLE "public"."v_org_program_unit_knowledge_coverage" TO "anon";
 GRANT ALL ON TABLE "public"."v_org_program_unit_knowledge_coverage" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_org_program_unit_knowledge_coverage" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_program_knowledge_gaps_summary" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_program_knowledge_gaps_summary" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_program_knowledge_gaps_summary" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_unit_knowledge_list" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_unit_knowledge_list" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_unit_knowledge_list" TO "service_role";
 
 
 
