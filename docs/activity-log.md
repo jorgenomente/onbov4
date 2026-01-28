@@ -1264,3 +1264,29 @@ Se agrega RPC set_local_active_program con auditoria append-only, RLS de escritu
 - Cambios de programa activo quedan auditados
 - Admin Org puede actualizar locales sin builder
 - No afecta learner_trainings existentes
+
+## 2026-01-28 — QA: smoke SQL E.1 programa activo por local
+
+**Tipo:** docs  
+**Alcance:** db | qa
+
+**Resumen**
+Se agrega script smoke DB-first para validar set_local_active_program y auditoría append-only en `docs/qa/smoke-post-mvp3-e1.sql`.
+
+**Impacto**
+
+- Evidencia reproducible de guardrails y auditoría en E.1
+- No ejecuta QA en este paso
+
+## 2026-01-28 — QA DB-first completa (L2, D2, E1)
+
+**Tipo:** docs  
+**Alcance:** db | qa
+
+**Resumen**
+Se ejecutan smokes DB-first: L2 (RLS review v2), D2 (guardrail config in_progress) y E1 (set_local_active_program + auditoría). Resultado: PASS.
+
+**Impacto**
+
+- Evidencia reproducible de seguridad y guardrails críticos
+- Base operable para UI Admin sin riesgo de bypass
