@@ -1658,3 +1658,17 @@ Se implementa redirect server-side en / y se agrega layout de organizacion con l
 - Qué habilita: entrypoint deterministico y navegacion base sin paginas huerfanas
 - Qué cambia: / deja de renderizar UI y redirige segun sesion
 - Qué NO cambia: no agrega CTAs dentro de paginas ni rutas nuevas
+
+## 2026-01-28 — Layouts por rol completados (learner + referente)
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se completa la navegacion minima por rol en learner y referente, con resaltado activo simple y sin agregar CTAs dentro de paginas.
+
+**Impacto**
+
+- Qué habilita: acceso consistente a rutas base por rol
+- Qué cambia: navegacion visible en layouts por rol
+- Qué NO cambia: no agrega links fuera del mapa ni logica de permisos nueva
