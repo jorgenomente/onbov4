@@ -1387,3 +1387,17 @@ Se agregan views read-only para drill-down (gaps por local y knowledge activo po
 - Navegación operativa sin writes
 - Cobertura y knowledge visibles por unidad
 - Enlaces directos a revisión de learners
+
+## 2026-01-28 — Post-MVP4 QA DB-first (K1/K2/K3)
+
+**Tipo:** docs  
+**Alcance:** qa
+
+**Resumen**
+Se agregan y ejecutan smokes DB-first para K1/K2/K3. Resultado: PASS en los tres.
+
+**Impacto**
+
+- Evidencia reproducible de views y RPCs Post-MVP4
+- Guardrails de disable verificados
+- Base lista para Post-MVP5 sin deuda de QA
