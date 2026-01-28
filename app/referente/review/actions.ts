@@ -138,6 +138,57 @@ export async function submitReviewValidationV2(input: ValidationV2Input) {
     );
   }
 
+  const { data: localRow, error: localError } = await supabase
+    .from('locals')
+    .select('org_id')
+    .eq('id', learnerTraining.local_id)
+    .maybeSingle();
+
+  if (localError || !localRow) {
+    throw new Error('Failed to resolve org context');
+  }
+
+  const payload = {
+    decision_type: decisionType,
+    perceived_severity: perceivedSeverity,
+    recommended_action: recommendedAction,
+  };
+
+  const alertTypes: Array<
+    | 'review_submitted_v2'
+    | 'review_rejected_v2'
+    | 'review_reinforcement_requested_v2'
+  > = ['review_submitted_v2'];
+
+  if (decisionType === 'reject') {
+    alertTypes.push('review_rejected_v2');
+  }
+
+  if (decisionType === 'request_reinforcement') {
+    alertTypes.push('review_reinforcement_requested_v2');
+  }
+
+  const alertEvents = alertTypes.map((alertType) => ({
+    alert_type: alertType,
+    learner_id: learnerId,
+    local_id: learnerTraining.local_id,
+    org_id: localRow.org_id,
+    source_table: 'learner_review_validations_v2',
+    source_id: decisionRecord.id,
+    payload,
+  }));
+
+  const { error: alertError } = await supabase
+    .from('alert_events')
+    .insert(alertEvents);
+
+  if (alertError) {
+    console.error('submitReviewValidationV2: alert insert failed', alertError);
+    throw new Error(
+      `Failed to emit alert events${alertError?.message ? `: ${alertError.message}` : ''}`,
+    );
+  }
+
   return { id: decisionRecord.id };
 }
 

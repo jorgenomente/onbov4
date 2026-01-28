@@ -1074,3 +1074,37 @@ Se ajusta la FK de `alert_events.learner_id` para evitar cascade y se endurece l
 - Protege historial auditado ante borrados accidentales de profiles
 - Evita snapshots incoherentes (org/local) en inserts server-only
 - Sin cambios de UI ni wiring
+
+## 2026-01-27 — Sub-lote M.2: emisión de alert_events
+
+**Tipo:** feature  
+**Alcance:** backend
+
+**Resumen**
+Se emiten eventos en `alert_events` desde submitReviewValidationV2 y cuando se finaliza una evaluación final, sin notificar ni cambiar estados.
+
+**Impacto**
+
+- review_submitted_v2 siempre + extras por decision_type
+- final_evaluation_submitted al cerrar attempt
+- Sin emails ni UI
+
+**QA manual**
+
+- Referente: crear validación v2 -> 1 o 2 filas en alert_events
+- Aprendiz: SELECT solo sus eventos
+- Final evaluation: al completar intento, crear alert final_evaluation_submitted
+
+## 2026-01-27 — Sub-lote M.2.1: policy aprendiz final_evaluation_submitted
+
+**Tipo:** fix  
+**Alcance:** db | rls | backend | docs
+
+**Resumen**
+Se elimina el uso de service_role y se habilita INSERT limitado para aprendiz solo para `final_evaluation_submitted`, con coherencia org/local por learner.
+
+**Impacto**
+
+- Inserción de eventos desde sesión del aprendiz sin llaves privilegiadas
+- Mantiene Zero Trust y snapshot coherente
+- Sin cambios de UI ni notificaciones

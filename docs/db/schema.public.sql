@@ -2197,6 +2197,14 @@ ALTER TABLE ONLY "public"."unit_knowledge_map"
 ALTER TABLE "public"."alert_events" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "alert_events_insert_aprendiz_final_evaluation" ON "public"."alert_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("alert_type" = 'final_evaluation_submitted'::"public"."alert_type") AND ("learner_id" = "auth"."uid"()) AND ("source_table" = 'final_evaluation_attempts'::"text") AND (EXISTS ( SELECT 1
+   FROM (("public"."final_evaluation_attempts" "a"
+     JOIN "public"."learner_trainings" "lt" ON (("lt"."learner_id" = "a"."learner_id")))
+     JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
+  WHERE (("a"."id" = "alert_events"."source_id") AND ("a"."learner_id" = "auth"."uid"()) AND ("alert_events"."local_id" = "lt"."local_id") AND ("alert_events"."org_id" = "l"."org_id"))))));
+
+
+
 CREATE POLICY "alert_events_insert_reviewer" ON "public"."alert_events" FOR INSERT WITH CHECK ((("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))

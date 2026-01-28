@@ -638,5 +638,45 @@ export async function finalizeAttempt(attemptId: string) {
     .update({ status: 'en_revision' })
     .eq('learner_id', attempt.learner_id);
 
+  const { data: training, error: trainingError } = await supabase
+    .from('learner_trainings')
+    .select('local_id, program_id')
+    .eq('learner_id', attempt.learner_id)
+    .maybeSingle();
+
+  if (trainingError || !training) {
+    throw new Error('Failed to resolve learner context for alerts');
+  }
+
+  const { data: localRow, error: localError } = await supabase
+    .from('locals')
+    .select('org_id')
+    .eq('id', training.local_id)
+    .maybeSingle();
+
+  if (localError || !localRow) {
+    throw new Error('Failed to resolve org context for alerts');
+  }
+
+  const { error: alertError } = await supabase.from('alert_events').insert({
+    alert_type: 'final_evaluation_submitted',
+    learner_id: attempt.learner_id,
+    local_id: training.local_id,
+    org_id: localRow.org_id,
+    source_table: 'final_evaluation_attempts',
+    source_id: attempt.id,
+    payload: {
+      attempt_number: attempt.attempt_number,
+      program_id: training.program_id ?? attempt.program_id,
+      status,
+    },
+  });
+
+  if (alertError) {
+    throw new Error(
+      `Failed to emit final evaluation alert${alertError?.message ? `: ${alertError.message}` : ''}`,
+    );
+  }
+
   return { globalScore, recommendation, status };
 }
