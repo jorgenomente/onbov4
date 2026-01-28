@@ -340,6 +340,20 @@ Reglas:
 
 ---
 
+## 8.2) Post-MVP6 — Bot Configuration Roadmap (living)
+
+Archivo vivo:
+
+- `docs/post-mvp6/bot-configuration-roadmap.md`
+
+Reglas:
+
+- Se actualiza al cerrar cada sub-lote Post-MVP6.
+- Se actualiza si se agregan/alteran tablas, columnas, views o RPC relacionadas a configuración del bot.
+- Todo sub-lote Post-MVP6 debe: (a) actualizar el roadmap, (b) registrar `docs/activity-log.md`, (c) regenerar `docs/db/` si hubo cambios de DB.
+
+---
+
 ## 9) Build, Lint & QA (OBLIGATORIO)
 
 La IA debe **frecuentemente**:

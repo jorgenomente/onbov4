@@ -1457,3 +1457,18 @@ Se ejecutan smokes DB-first para M1–M5 con resultados PASS en todos los casos.
 - Evidencia reproducible de métricas y playbooks Post-MVP5
 - Validación de outcomes y joins sin errores
 - QA cerrada para continuar sub-lotes
+
+## 2026-01-28 — Post-MVP6: roadmap/contrato configuración del bot (docs-only)
+
+**Tipo:** docs  
+**Alcance:** docs | producto
+
+**Resumen**
+Se crea el documento maestro de configuración del bot (contenido, comportamiento y evaluación), basado en el schema y el comportamiento actual, con matriz de configurables, guardrails anti‑LMS y plan de sub‑lotes.
+
+**Impacto**
+
+- Qué habilita: planificación accionable para cerrar configuración del bot sin inventar entidades
+- Qué cambia: claridad sobre qué es configurable hoy vs hardcodeado
+- Qué NO cambia: no modifica DB, RLS ni UI
+- Próximos pasos sugeridos: definir Sub‑lote 1 (cambios mínimos de DB, si aplica)
