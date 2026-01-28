@@ -150,9 +150,17 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-col gap-2">
-        <Link href="/" className="text-xs text-slate-500">
-          ← Volver
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link href="/" className="text-xs text-slate-500">
+            ← Volver
+          </Link>
+          <Link
+            href="/org/bot-config"
+            className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            Config Bot
+          </Link>
+        </div>
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">
             Métricas (últimos 30 días)

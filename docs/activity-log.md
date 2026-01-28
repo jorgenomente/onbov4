@@ -1532,3 +1532,17 @@ Se agrega is_enabled en practice_scenarios, RPC disable_practice_scenario y tabl
 - Qué cambia: nuevos eventos y policies UPDATE/SELECT controladas
 - Qué NO cambia: no agrega UI ni re-enable RPC
 - Próximos pasos sugeridos: decidir si se agrega re-enable (event_type existe)
+
+## 2026-01-28 — Post-MVP6 Sub-lote 4: UI config del bot (read + create/disable)
+
+**Tipo:** feature  
+**Alcance:** frontend | backend | ux
+
+**Resumen**
+Se agrega la pantalla /org/bot-config para Admin Org/Superadmin con lectura de views S2 y acciones create/disable de practice_scenarios via Server Actions.
+
+**Impacto**
+
+- Qué habilita: operación básica de escenarios de práctica sin SQL manual
+- Qué cambia: nueva ruta y link de acceso desde métricas
+- Qué NO cambia: no toca DB ni agrega features de LMS

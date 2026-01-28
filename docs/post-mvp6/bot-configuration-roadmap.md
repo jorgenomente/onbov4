@@ -301,6 +301,13 @@ Formato estricto (ya usado en practica y evaluacion final):
 
 - 1 pantalla, 1 write, estados completos.
 
+**Estado**: Hecho (2026-01-28)
+
+**Implementado**
+
+- Ruta `/org/bot-config` con lectura de views S2 y acciones create/disable practice_scenarios.
+- Selector de local, resumen, unidades, gaps y modales create/disable.
+
 **Riesgos**
 
 - UI sin contrato de datos claro.
