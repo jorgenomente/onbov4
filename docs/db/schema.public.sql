@@ -88,6 +88,100 @@ CREATE TYPE "public"."recommended_action" AS ENUM (
 ALTER TYPE "public"."recommended_action" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) RETURNS "uuid"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_role text;
+  v_org_id uuid;
+  v_new_id uuid;
+begin
+  v_role := public.current_role();
+  v_org_id := public.current_org_id();
+
+  if v_role not in ('admin_org', 'superadmin') then
+    raise exception 'forbidden: role % cannot create final evaluation config', v_role
+      using errcode = '42501';
+  end if;
+
+  -- Validar programa dentro del tenant (y visible por RLS)
+  if not exists (
+    select 1
+    from public.training_programs tp
+    where tp.id = p_program_id
+      and tp.org_id = v_org_id
+  ) then
+    raise exception 'not_found: program_id % not in org scope', p_program_id
+      using errcode = '22023';
+  end if;
+
+  -- Validaciones de parametros (guardrails minimos)
+  if p_total_questions is null or p_total_questions <= 0 then
+    raise exception 'invalid: total_questions must be > 0'
+      using errcode = '22023';
+  end if;
+
+  if p_roleplay_ratio is null or p_roleplay_ratio < 0 or p_roleplay_ratio > 1 then
+    raise exception 'invalid: roleplay_ratio must be between 0 and 1'
+      using errcode = '22023';
+  end if;
+
+  if p_min_global_score is null or p_min_global_score < 0 or p_min_global_score > 100 then
+    -- Score esperado en porcentaje 0..100 (alineado a engine actual).
+    raise exception 'invalid: min_global_score must be between 0 and 100'
+      using errcode = '22023';
+  end if;
+
+  if p_questions_per_unit is null or p_questions_per_unit <= 0 then
+    raise exception 'invalid: questions_per_unit must be > 0'
+      using errcode = '22023';
+  end if;
+
+  if p_max_attempts is null or p_max_attempts <= 0 then
+    raise exception 'invalid: max_attempts must be > 0'
+      using errcode = '22023';
+  end if;
+
+  if p_cooldown_hours is null or p_cooldown_hours < 0 then
+    raise exception 'invalid: cooldown_hours must be >= 0'
+      using errcode = '22023';
+  end if;
+
+  -- Insert-only versioning: siempre insertamos nueva fila (append-only).
+  insert into public.final_evaluation_configs (
+    program_id,
+    total_questions,
+    roleplay_ratio,
+    min_global_score,
+    must_pass_units,
+    questions_per_unit,
+    max_attempts,
+    cooldown_hours
+  )
+  values (
+    p_program_id,
+    p_total_questions,
+    p_roleplay_ratio,
+    p_min_global_score,
+    coalesce(p_must_pass_units, '{}'::integer[]),
+    p_questions_per_unit,
+    p_max_attempts,
+    p_cooldown_hours
+  )
+  returning id into v_new_id;
+
+  return v_new_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) IS 'Post-MVP3 C.2: Insert-only RPC to create a new final_evaluation_configs row (versioning by created_at). Admin Org / Superadmin only.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."current_local_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -305,7 +399,8 @@ CREATE OR REPLACE FUNCTION "public"."prevent_update_delete"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
 begin
-  raise exception 'append-only table: % is not allowed', tg_op;
+  raise exception 'UPDATE/DELETE not allowed on % (append-only).', tg_table_name
+    using errcode = '42501';
 end;
 $$;
 
@@ -1350,6 +1445,118 @@ CREATE OR REPLACE VIEW "public"."v_local_unit_coverage_30d" AS
 ALTER VIEW "public"."v_local_unit_coverage_30d" OWNER TO "postgres";
 
 
+CREATE OR REPLACE VIEW "public"."v_org_local_active_programs" WITH ("security_barrier"='true') AS
+ SELECT "l"."id" AS "local_id",
+    "l"."org_id",
+    "l"."name" AS "local_name",
+    "lap"."program_id",
+    "tp"."name" AS "program_name",
+    "tp"."local_id" AS "program_local_id",
+    "tp"."is_active" AS "program_is_active",
+    "lap"."created_at" AS "activated_at"
+   FROM (("public"."locals" "l"
+     JOIN "public"."local_active_programs" "lap" ON (("lap"."local_id" = "l"."id")))
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "lap"."program_id")));
+
+
+ALTER VIEW "public"."v_org_local_active_programs" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_local_active_programs" IS 'Post-MVP3 B.1: Programa activo por local (local_active_programs + locals + training_programs). Read-only; tenant-scoped por RLS.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_program_final_eval_config_current" WITH ("security_barrier"='true') AS
+ SELECT "tp"."id" AS "program_id",
+    "tp"."org_id",
+    "tp"."local_id" AS "program_local_id",
+    "tp"."name" AS "program_name",
+    "tp"."is_active" AS "program_is_active",
+    "fec"."id" AS "config_id",
+    "fec"."total_questions",
+    "fec"."roleplay_ratio",
+    "fec"."min_global_score",
+    "fec"."must_pass_units",
+    "fec"."questions_per_unit",
+    "fec"."max_attempts",
+    "fec"."cooldown_hours",
+    "fec"."created_at" AS "config_created_at"
+   FROM ("public"."training_programs" "tp"
+     LEFT JOIN ( SELECT DISTINCT ON ("final_evaluation_configs"."program_id") "final_evaluation_configs"."id",
+            "final_evaluation_configs"."program_id",
+            "final_evaluation_configs"."total_questions",
+            "final_evaluation_configs"."roleplay_ratio",
+            "final_evaluation_configs"."min_global_score",
+            "final_evaluation_configs"."must_pass_units",
+            "final_evaluation_configs"."questions_per_unit",
+            "final_evaluation_configs"."max_attempts",
+            "final_evaluation_configs"."cooldown_hours",
+            "final_evaluation_configs"."created_at"
+           FROM "public"."final_evaluation_configs"
+          ORDER BY "final_evaluation_configs"."program_id", "final_evaluation_configs"."created_at" DESC) "fec" ON (("fec"."program_id" = "tp"."id")));
+
+
+ALTER VIEW "public"."v_org_program_final_eval_config_current" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_program_final_eval_config_current" IS 'Post-MVP3 B.1: Config vigente de evaluacion final por programa (latest by created_at). Read-only; tenant-scoped por RLS de tablas base.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_program_final_eval_config_history" WITH ("security_barrier"='true') AS
+ SELECT "tp"."id" AS "program_id",
+    "tp"."org_id",
+    "tp"."local_id" AS "program_local_id",
+    "tp"."name" AS "program_name",
+    "tp"."is_active" AS "program_is_active",
+    "fec"."id" AS "config_id",
+    "fec"."total_questions",
+    "fec"."roleplay_ratio",
+    "fec"."min_global_score",
+    "fec"."must_pass_units",
+    "fec"."questions_per_unit",
+    "fec"."max_attempts",
+    "fec"."cooldown_hours",
+    "fec"."created_at" AS "config_created_at"
+   FROM ("public"."final_evaluation_configs" "fec"
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "fec"."program_id")))
+  ORDER BY "tp"."id", "fec"."created_at" DESC;
+
+
+ALTER VIEW "public"."v_org_program_final_eval_config_history" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_program_final_eval_config_history" IS 'Post-MVP3 B.1: Historial completo de configs de evaluacion final por programa. Read-only; tenant-scoped por RLS.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_program_unit_knowledge_coverage" WITH ("security_barrier"='true') AS
+ SELECT "tp"."id" AS "program_id",
+    "tp"."org_id",
+    "tp"."local_id" AS "program_local_id",
+    "tp"."name" AS "program_name",
+    "tu"."id" AS "unit_id",
+    "tu"."unit_order",
+    "tu"."title" AS "unit_title",
+    "count"("ukm"."knowledge_id") AS "knowledge_total",
+    "count"("ki"."id") FILTER (WHERE ("ki"."local_id" IS NULL)) AS "knowledge_org_scoped",
+    "count"("ki"."id") FILTER (WHERE ("ki"."local_id" IS NOT NULL)) AS "knowledge_local_scoped",
+    ("count"("ukm"."knowledge_id") = 0) AS "is_missing_knowledge_mapping"
+   FROM ((("public"."training_programs" "tp"
+     JOIN "public"."training_units" "tu" ON (("tu"."program_id" = "tp"."id")))
+     LEFT JOIN "public"."unit_knowledge_map" "ukm" ON (("ukm"."unit_id" = "tu"."id")))
+     LEFT JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
+  GROUP BY "tp"."id", "tp"."org_id", "tp"."local_id", "tp"."name", "tu"."id", "tu"."unit_order", "tu"."title"
+  ORDER BY "tp"."id", "tu"."unit_order";
+
+
+ALTER VIEW "public"."v_org_program_unit_knowledge_coverage" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_program_unit_knowledge_coverage" IS 'Post-MVP3 B.1: Coverage de knowledge por unidad (counts + flag is_missing_knowledge_mapping). Read-only; tenant-scoped por RLS.';
+
+
+
 CREATE OR REPLACE VIEW "public"."v_referente_conversation_summary" AS
  SELECT "c"."id" AS "conversation_id",
     "c"."learner_id",
@@ -1862,6 +2069,14 @@ CREATE OR REPLACE TRIGGER "trg_conversations_prevent_update" BEFORE DELETE OR UP
 
 
 CREATE OR REPLACE TRIGGER "trg_final_evaluation_answers_prevent_update" BEFORE DELETE OR UPDATE ON "public"."final_evaluation_answers" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_final_evaluation_configs_prevent_update_delete" BEFORE DELETE OR UPDATE ON "public"."final_evaluation_configs" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
+
+
+
+COMMENT ON TRIGGER "trg_final_evaluation_configs_prevent_update_delete" ON "public"."final_evaluation_configs" IS 'Post-MVP3 C.1: Enforce append-only (no UPDATE/DELETE). Insert new rows to version configs.';
 
 
 
@@ -2815,6 +3030,12 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."current_local_id"() TO "anon";
 GRANT ALL ON FUNCTION "public"."current_local_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."current_local_id"() TO "service_role";
@@ -3104,6 +3325,30 @@ GRANT ALL ON TABLE "public"."v_local_top_gaps_30d" TO "service_role";
 GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "anon";
 GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_local_active_programs" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_local_active_programs" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_local_active_programs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_program_final_eval_config_current" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_program_final_eval_config_current" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_program_final_eval_config_current" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_program_final_eval_config_history" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_program_final_eval_config_history" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_program_final_eval_config_history" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_program_unit_knowledge_coverage" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_program_unit_knowledge_coverage" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_program_unit_knowledge_coverage" TO "service_role";
 
 
 

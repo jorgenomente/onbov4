@@ -1128,3 +1128,99 @@ Se agrega /referente/alerts como bandeja read-only de alert_events con joins a p
 - Referente: ver solo eventos de su local
 - Admin Org: ver eventos de toda la org
 - Links llevan al detalle del learner
+
+## 2026-01-28 — Post-MVP 3 Sub-lote A: inventario DB y contrato config bot
+
+**Tipo:** docs  
+**Alcance:** db | rls | backend | producto
+
+**Resumen**
+Se documenta el inventario real del schema relevante para configuracion del bot (programas, knowledge, evaluacion final) y se define el contrato minimo operable para Admin Org basado en el estado actual de RLS y consumo en app.
+
+**Impacto**
+
+- Establece limites claros de que es configurable hoy vs futuro
+- Expone dependencias reales del bot (knowledge y configs) sin inventar entidades
+- Habilita planificacion de sub-lotes de configuracion sin tocar schema ni UI
+
+## 2026-01-28 — Post-MVP 3 Sub-lote B.1: views config bot
+
+**Tipo:** feature  
+**Alcance:** db | docs
+
+**Resumen**
+Se agregan views read-only para configurar/observar la configuracion del bot: config vigente e historial por programa, coverage de knowledge por unidad y programa activo por local.
+
+**Impacto**
+
+- Habilita lectura operativa sin writes ni cambios de UI
+- Mantiene multi-tenant via RLS de tablas base
+- Sin cambios de comportamiento del bot
+
+## 2026-01-28 — Post-MVP 3 Sub-lote C: final eval config append-only + RPC
+
+**Tipo:** feature  
+**Alcance:** db | rls
+
+**Resumen**
+Se hace append-only a final_evaluation_configs con trigger prevent_update_delete y se agrega RPC create_final_evaluation_config para insertar nuevas versiones con validaciones de rol y tenant.
+
+**Impacto**
+
+- Versionado por insert-only en configuraciones de evaluación final
+- No se modifica engine ni UI
+- Mantiene Zero Trust mediante RLS y checks de rol/org
+
+## 2026-01-28 — Fix: validacion min_global_score 0-100 en RPC
+
+**Tipo:** fix  
+**Alcance:** db | docs
+
+**Resumen**
+Se ajusta la validacion de min_global_score en la RPC create_final_evaluation_config a rango 0–100, alineado a engine y seeds actuales, y se documenta el contrato.
+
+**Impacto**
+
+- Evita gating incorrecto por configs validas en porcentaje
+- Mantiene compatibilidad con seeds existentes
+- Sin cambios en engine ni schema
+
+## 2026-01-28 — Post-MVP3 D.1: UI Admin config eval final
+
+**Tipo:** feature  
+**Alcance:** frontend | backend | ux
+
+**Resumen**
+Se agrega la pantalla /org/config/bot para Admin Org con selector de programa, lectura de config vigente e historial y formulario insert-only via RPC create_final_evaluation_config.
+
+**Impacto**
+
+- Admin puede crear nuevas configuraciones sin tocar engine
+- Lectura de warnings de coverage sin writes adicionales
+- Respeta RLS y append-only
+
+## 2026-01-28 — Fix: import path supabase en referente/alerts
+
+**Tipo:** fix  
+**Alcance:** frontend
+
+**Resumen**
+Se corrige el import relativo de getSupabaseServerClient en /referente/alerts para restaurar build.
+
+**Impacto**
+
+- Build vuelve a compilar
+- Sin cambios de comportamiento
+
+## 2026-01-28 — Fix: await searchParams en /org/config/bot
+
+**Tipo:** fix  
+**Alcance:** frontend
+
+**Resumen**
+Se ajusta la firma de page.tsx para await searchParams (Promise) en App Router y evitar crash al navegar con query params.
+
+**Impacto**
+
+- Evita rebote al seleccionar programa
+- Sin cambios funcionales adicionales

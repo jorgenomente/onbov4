@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { getSupabaseServerClient } from '../../lib/server/supabase';
+import { getSupabaseServerClient } from '../../../lib/server/supabase';
 
 const ALERT_LABELS: Record<string, string> = {
   review_submitted_v2: 'Validacion v2 enviada',
@@ -18,9 +18,11 @@ type AlertRow = {
   source_id: string;
   payload: Record<string, unknown> | null;
   created_at: string;
-  profiles?: {
-    full_name: string | null;
-  } | null;
+  profiles?:
+    | {
+        full_name: string | null;
+      }[]
+    | null;
 };
 
 function buildPayloadSummary(payload: Record<string, unknown> | null) {
@@ -114,7 +116,7 @@ export default async function AlertsInboxPage() {
                   'es-AR',
                 );
                 const learnerName =
-                  alert.profiles?.full_name?.trim() || 'Aprendiz';
+                  alert.profiles?.[0]?.full_name?.trim() || 'Aprendiz';
                 const link = getLearnerLink(alert);
                 const detail = buildPayloadSummary(alert.payload ?? null);
 
