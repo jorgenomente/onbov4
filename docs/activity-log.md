@@ -1429,3 +1429,17 @@ Se agrega la view v_org_recommended_actions_playbooks_30d con checklist, impacto
 - Acciones sugeridas con pasos concretos
 - CTA principal + links secundarios
 - Sin writes ni reglas dinámicas
+
+## 2026-01-28 — Post-MVP5 M5: outcomes 7d vs 30d (read-only)
+
+**Tipo:** feature  
+**Alcance:** db | frontend | ux | docs
+
+**Resumen**
+Se agregan views de outcomes 7d vs 30d para acciones sugeridas y se muestra el estado (mejorando/estable/empeorando) en /org/metrics.
+
+**Impacto**
+
+- Cierre de loop medir → actuar → verificar
+- Fallback explícito cuando no hay señal 7d
+- Sin writes ni lógica dinámica

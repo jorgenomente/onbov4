@@ -54,6 +54,11 @@ type ActionRow = {
   checklist: string[] | null;
   impact_note: string | null;
   secondary_links: Array<{ label: string; href: string }> | null;
+  trend: 'improving' | 'stable' | 'worsening' | null;
+  delta_score: number | null;
+  score_7d: number | null;
+  score_30d: number | null;
+  sample_size_30d: number | null;
   created_at: string;
 };
 
@@ -125,9 +130,9 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
     .limit(200);
 
   const { data: actions, error: actionsError } = await supabase
-    .from('v_org_recommended_actions_playbooks_30d')
+    .from('v_org_recommended_actions_playbooks_with_outcomes_30d')
     .select(
-      'org_id, action_key, priority, title, reason, evidence, cta_label, cta_href, checklist, impact_note, secondary_links, created_at',
+      'org_id, action_key, priority, title, reason, evidence, cta_label, cta_href, checklist, impact_note, secondary_links, trend, delta_score, score_7d, score_30d, sample_size_30d, created_at',
     )
     .order('priority', { ascending: false })
     .limit(10);
@@ -223,6 +228,20 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
               <div className="mt-4 space-y-3">
                 {(actions as ActionRow[]).map((action) => {
                   const badge = priorityBadge(action.priority);
+                  const outcomeLabel =
+                    action.trend === 'improving'
+                      ? 'Mejorando'
+                      : action.trend === 'worsening'
+                        ? 'Empeoró'
+                        : action.trend === 'stable'
+                          ? 'Sin cambios'
+                          : null;
+                  const outcomeClass =
+                    action.trend === 'improving'
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : action.trend === 'worsening'
+                        ? 'bg-rose-50 text-rose-700'
+                        : 'bg-slate-100 text-slate-600';
                   const gapKey =
                     action.action_key === 'top_gap' &&
                     action.evidence &&
@@ -252,14 +271,28 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
                         <p className="text-sm font-semibold text-slate-900">
                           {action.title}
                         </p>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}
-                        >
-                          {badge.label}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}
+                          >
+                            {badge.label}
+                          </span>
+                          {outcomeLabel ? (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${outcomeClass}`}
+                            >
+                              {outcomeLabel}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <p className="mt-1 text-xs text-slate-500">
                         {action.reason}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {action.score_7d === null
+                          ? 'Sin señal suficiente 7d'
+                          : 'Últimos 7d vs 30d'}
                       </p>
                       {checklist.length > 0 ? (
                         <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500">
