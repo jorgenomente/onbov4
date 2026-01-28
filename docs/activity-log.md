@@ -1373,3 +1373,17 @@ Se agregan views org-scoped de métricas 30 días (gaps, riesgo, cobertura) y pa
 - Visibilidad operativa sin writes
 - Drill-down por local en tablas
 - RLS por org/rol
+
+## 2026-01-28 — Post-MVP5 M2: drill-down org metrics
+
+**Tipo:** feature  
+**Alcance:** db | frontend | ux | docs
+
+**Resumen**
+Se agregan views read-only para drill-down (gaps por local y knowledge activo por unidad) y rutas de detalle desde /org/metrics.
+
+**Impacto**
+
+- Navegación operativa sin writes
+- Cobertura y knowledge visibles por unidad
+- Enlaces directos a revisión de learners

@@ -195,7 +195,14 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
                   {(gaps as GapRow[]).map((row) => (
                     <tr key={row.gap_key}>
                       <td className="px-3 py-2 text-slate-700">
-                        {row.title ?? row.gap_key}
+                        <Link
+                          href={`/org/metrics/gaps/${encodeURIComponent(
+                            row.gap_key,
+                          )}`}
+                          className="font-medium text-slate-700 hover:text-slate-900"
+                        >
+                          {row.title ?? row.gap_key}
+                        </Link>
                       </td>
                       <td className="px-3 py-2 text-slate-700">
                         {row.learners_affected_count}
@@ -240,7 +247,12 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
                         {row.local_name ?? row.local_id}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
-                        Unidad {row.unit_order}
+                        <Link
+                          href={`/org/metrics/coverage/${row.program_id}/${row.unit_order}`}
+                          className="font-medium text-slate-700 hover:text-slate-900"
+                        >
+                          Unidad {row.unit_order}
+                        </Link>
                       </td>
                       <td className="px-3 py-2 text-slate-500">
                         {formatPercent(row.coverage_percent)}
@@ -279,7 +291,12 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
                   {(risks as RiskRow[]).map((row) => (
                     <tr key={row.learner_id}>
                       <td className="px-3 py-2 text-slate-700">
-                        {row.learner_id}
+                        <Link
+                          href={`/referente/review/${row.learner_id}`}
+                          className="font-medium text-slate-700 hover:text-slate-900"
+                        >
+                          {row.learner_id}
+                        </Link>
                       </td>
                       <td className="px-3 py-2 text-slate-700">
                         {row.local_id}

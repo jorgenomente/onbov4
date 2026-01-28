@@ -1855,6 +1855,27 @@ CREATE OR REPLACE VIEW "public"."v_local_unit_coverage_30d" AS
 ALTER VIEW "public"."v_local_unit_coverage_30d" OWNER TO "postgres";
 
 
+CREATE OR REPLACE VIEW "public"."v_org_gap_locals_30d" WITH ("security_barrier"='true') AS
+ SELECT "l"."org_id",
+    "v"."gap" AS "gap_key",
+    "v"."local_id",
+    "l"."name" AS "local_name",
+    "v"."learners_affected" AS "learners_affected_count",
+    "v"."percent_learners_affected" AS "percent_learners_affected_local",
+    "v"."count_total" AS "total_events_30d",
+    "v"."last_seen_at" AS "last_event_at"
+   FROM ("public"."v_local_top_gaps_30d" "v"
+     JOIN "public"."locals" "l" ON (("l"."id" = "v"."local_id")))
+  WHERE (("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR ("l"."org_id" = "public"."current_org_id"())));
+
+
+ALTER VIEW "public"."v_org_gap_locals_30d" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_gap_locals_30d" IS 'Post-MVP5 M2: Distribucion de gaps (gap_key) por local en 30d. gap_key proviene de v_local_top_gaps_30d; no hay unit_order.';
+
+
+
 CREATE OR REPLACE VIEW "public"."v_org_learner_risk_30d" WITH ("security_barrier"='true') AS
  SELECT "l"."org_id",
     "v"."local_id",
@@ -2087,6 +2108,34 @@ ALTER VIEW "public"."v_org_unit_coverage_30d" OWNER TO "postgres";
 
 
 COMMENT ON VIEW "public"."v_org_unit_coverage_30d" IS 'Post-MVP5 M1: Cobertura por unidad (30d) agregada por org. coverage_percent deriva de fail rates promedio.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_unit_knowledge_active" WITH ("security_barrier"='true') AS
+ SELECT "tp"."org_id",
+    "tp"."id" AS "program_id",
+    "tp"."name" AS "program_name",
+    "tu"."id" AS "unit_id",
+    "tu"."unit_order",
+    "tu"."title" AS "unit_title",
+    "ki"."id" AS "knowledge_id",
+    "ki"."title" AS "knowledge_title",
+        CASE
+            WHEN ("ki"."local_id" IS NULL) THEN 'org'::"text"
+            ELSE 'local'::"text"
+        END AS "knowledge_scope",
+    "ki"."created_at" AS "knowledge_created_at"
+   FROM ((("public"."training_units" "tu"
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "tu"."program_id")))
+     JOIN "public"."unit_knowledge_map" "ukm" ON (("ukm"."unit_id" = "tu"."id")))
+     JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
+  WHERE (("ki"."is_enabled" = true) AND ("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR ("tp"."org_id" = "public"."current_org_id"())));
+
+
+ALTER VIEW "public"."v_org_unit_knowledge_active" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_unit_knowledge_active" IS 'Post-MVP5 M2: Knowledge activo por unidad (org-scoped). Filtra is_enabled=true; scope deriva de knowledge_items.local_id.';
 
 
 
@@ -4088,6 +4137,12 @@ GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."v_org_gap_locals_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_gap_locals_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_gap_locals_30d" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."v_org_learner_risk_30d" TO "anon";
 GRANT ALL ON TABLE "public"."v_org_learner_risk_30d" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_org_learner_risk_30d" TO "service_role";
@@ -4133,6 +4188,12 @@ GRANT ALL ON TABLE "public"."v_org_top_gaps_30d" TO "service_role";
 GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "anon";
 GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_unit_knowledge_active" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_unit_knowledge_active" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_unit_knowledge_active" TO "service_role";
 
 
 
