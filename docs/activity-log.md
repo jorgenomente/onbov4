@@ -1345,3 +1345,17 @@ Se agrega RPC create_and_map_knowledge_item con auditoría append-only y políti
 - Admin Org puede cargar knowledge sin SQL
 - Coverage/list K1 reflejan el nuevo item
 - Append-only preservado sin CRUD libre
+
+## 2026-01-28 — Post-MVP4 K3: disable knowledge (RPC + guardrails)
+
+**Tipo:** feature  
+**Alcance:** db | rls | backend | frontend | ux
+
+**Resumen**
+Se agrega is_enabled en knowledge_items con guardrail de update, RPC disable_knowledge_item y eventos audit en knowledge_change_events. La UI de knowledge coverage permite desactivar items con confirmación.
+
+**Impacto**
+
+- Admin puede desactivar knowledge sin borrar ni editar
+- Coverage/drill-down filtran desactivados
+- Auditoría append-only por mapping

@@ -29,6 +29,9 @@ function resolveErrorMessage(raw: string | null | undefined) {
     if (parts.length > 1) return parts[1].trim();
     return 'Datos inválidos.';
   }
+  if (raw.includes('already disabled')) {
+    return 'El knowledge ya está desactivado.';
+  }
   if (raw.includes('conflict')) {
     return 'El mapping ya existe para esa unidad.';
   }
@@ -119,4 +122,37 @@ export async function addKnowledgeToUnitAction(formData: FormData) {
       knowledgeId: String(data),
     }),
   );
+}
+
+export async function disableKnowledgeItemAction(formData: FormData) {
+  const knowledgeId = String(formData.get('knowledge_id') ?? '').trim();
+  const reason = String(formData.get('reason') ?? '').trim();
+  const programId = String(formData.get('program_id') ?? '').trim();
+
+  if (!knowledgeId) {
+    redirect(buildRedirectUrl({ programId, error: 'knowledge_id requerido' }));
+  }
+
+  if (reason.length > 500) {
+    redirect(
+      buildRedirectUrl({
+        programId,
+        error: 'reason length must be <= 500',
+      }),
+    );
+  }
+
+  const supabase = await getSupabaseServerClient();
+  const { error } = await supabase.rpc('disable_knowledge_item', {
+    p_knowledge_id: knowledgeId,
+    p_reason: reason.length > 0 ? reason : null,
+  });
+
+  if (error) {
+    const message = resolveErrorMessage(error?.message);
+    redirect(buildRedirectUrl({ programId, error: message }));
+  }
+
+  revalidatePath('/org/config/knowledge-coverage');
+  redirect(buildRedirectUrl({ programId, success: 'disabled' }));
 }

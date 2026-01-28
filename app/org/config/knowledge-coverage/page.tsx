@@ -2,7 +2,11 @@ import Link from 'next/link';
 
 import { requireUserAndRole } from '../../../../lib/server/requireRole';
 import { getSupabaseServerClient } from '../../../../lib/server/supabase';
-import { addKnowledgeToUnitAction } from './actions';
+import {
+  addKnowledgeToUnitAction,
+  disableKnowledgeItemAction,
+} from './actions';
+import { DisableKnowledgeButton } from './DisableKnowledgeButton';
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -155,6 +159,12 @@ export default async function KnowledgeCoveragePage({
       {success === '1' ? (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
           Knowledge agregado. ID: {knowledgeId ?? '—'}
+        </div>
+      ) : null}
+
+      {success === 'disabled' ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          Knowledge desactivado.
         </div>
       ) : null}
 
@@ -452,6 +462,11 @@ export default async function KnowledgeCoveragePage({
                               <div className="text-[11px] text-slate-500">
                                 {formatDate(item.knowledge_created_at)}
                               </div>
+                              <DisableKnowledgeButton
+                                knowledgeId={item.knowledge_id}
+                                programId={programId}
+                                action={disableKnowledgeItemAction}
+                              />
                             </li>
                           ))}
                         </ul>

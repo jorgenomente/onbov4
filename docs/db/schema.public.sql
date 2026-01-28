@@ -402,6 +402,106 @@ $$;
 ALTER FUNCTION "public"."current_user_id"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text" DEFAULT NULL::"text") RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_role text;
+  v_org_id uuid;
+  v_knowledge_org_id uuid;
+  v_knowledge_local_id uuid;
+  v_title text;
+  v_reason text;
+  v_events int;
+begin
+  v_role := public.current_role();
+  v_org_id := public.current_org_id();
+
+  if v_role not in ('admin_org', 'superadmin') then
+    raise exception 'forbidden: role % cannot disable knowledge', v_role
+      using errcode = '42501';
+  end if;
+
+  select ki.org_id, ki.local_id, ki.title
+    into v_knowledge_org_id, v_knowledge_local_id, v_title
+  from public.knowledge_items ki
+  where ki.id = p_knowledge_id;
+
+  if v_knowledge_org_id is null then
+    raise exception 'not_found: knowledge_id % not in org scope', p_knowledge_id
+      using errcode = '22023';
+  end if;
+
+  if v_role = 'admin_org' and v_knowledge_org_id <> v_org_id then
+    raise exception 'not_found: knowledge_id % not in org scope', p_knowledge_id
+      using errcode = '22023';
+  end if;
+
+  if v_knowledge_local_id is not null then
+    if not exists (
+      select 1
+      from public.locals l
+      where l.id = v_knowledge_local_id
+        and l.org_id = v_knowledge_org_id
+    ) then
+      raise exception 'not_found: local_id % not in org scope', v_knowledge_local_id
+        using errcode = '22023';
+    end if;
+  end if;
+
+  v_reason := trim(coalesce(p_reason, ''));
+  if length(v_reason) > 500 then
+    raise exception 'invalid: reason length must be <= 500'
+      using errcode = '22023';
+  end if;
+
+  update public.knowledge_items
+  set is_enabled = false
+  where id = p_knowledge_id;
+
+  insert into public.knowledge_change_events (
+    org_id,
+    local_id,
+    program_id,
+    unit_id,
+    unit_order,
+    knowledge_id,
+    action,
+    created_by_user_id,
+    title,
+    reason
+  )
+  select
+    tp.org_id,
+    v_knowledge_local_id,
+    tp.id,
+    tu.id,
+    tu.unit_order,
+    p_knowledge_id,
+    'disable',
+    auth.uid(),
+    v_title,
+    nullif(v_reason, '')
+  from public.unit_knowledge_map ukm
+  join public.training_units tu on tu.id = ukm.unit_id
+  join public.training_programs tp on tp.id = tu.program_id
+  where ukm.knowledge_id = p_knowledge_id
+    and tp.org_id = v_knowledge_org_id;
+
+  get diagnostics v_events = row_count;
+
+  return v_events;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") IS 'Post-MVP4 K3: disable knowledge item (is_enabled=false) and emit audit events per mapping.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."get_user_email"("target_user_id" "uuid") RETURNS "text"
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO 'public', 'auth'
@@ -440,6 +540,43 @@ $$;
 
 
 ALTER FUNCTION "public"."get_user_email"("target_user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."guard_knowledge_items_disable_update"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  if new.id is distinct from old.id then
+    raise exception 'invalid: id cannot be updated'
+      using errcode = '42501';
+  end if;
+
+  if new.org_id is distinct from old.org_id
+     or new.local_id is distinct from old.local_id
+     or new.title is distinct from old.title
+     or new.content is distinct from old.content
+     or new.created_at is distinct from old.created_at then
+    raise exception 'invalid: only is_enabled can be updated'
+      using errcode = '42501';
+  end if;
+
+  if new.is_enabled is distinct from old.is_enabled then
+    if old.is_enabled = true and new.is_enabled = false then
+      return new;
+    end if;
+    if old.is_enabled = false then
+      raise exception 'conflict: already disabled'
+        using errcode = '23505';
+    end if;
+  end if;
+
+  raise exception 'invalid: only is_enabled true->false is allowed'
+    using errcode = '42501';
+end;
+$$;
+
+
+ALTER FUNCTION "public"."guard_knowledge_items_disable_update"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."guard_profiles_update"() RETURNS "trigger"
@@ -828,7 +965,8 @@ CREATE TABLE IF NOT EXISTS "public"."knowledge_change_events" (
     "action" "text" DEFAULT 'create_and_map'::"text" NOT NULL,
     "created_by_user_id" "uuid" NOT NULL,
     "title" "text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "reason" "text"
 );
 
 
@@ -841,7 +979,8 @@ CREATE TABLE IF NOT EXISTS "public"."knowledge_items" (
     "local_id" "uuid",
     "title" "text" NOT NULL,
     "content" "text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "is_enabled" boolean DEFAULT true NOT NULL
 );
 
 
@@ -1810,12 +1949,12 @@ CREATE OR REPLACE VIEW "public"."v_org_program_unit_knowledge_coverage" WITH ("s
     "count"("ki"."id") AS "total_knowledge_count",
     "count"("ki"."id") FILTER (WHERE ("ki"."local_id" IS NULL)) AS "org_level_knowledge_count",
     "count"("ki"."id") FILTER (WHERE (("tp"."local_id" IS NOT NULL) AND ("ki"."local_id" = "tp"."local_id"))) AS "local_level_knowledge_count",
-    ("count"("ukm"."knowledge_id") > 0) AS "has_any_mapping",
-    ("count"("ukm"."knowledge_id") = 0) AS "is_missing_mapping"
+    ("count"("ki"."id") > 0) AS "has_any_mapping",
+    ("count"("ki"."id") = 0) AS "is_missing_mapping"
    FROM ((("public"."training_programs" "tp"
      JOIN "public"."training_units" "tu" ON (("tu"."program_id" = "tp"."id")))
      LEFT JOIN "public"."unit_knowledge_map" "ukm" ON (("ukm"."unit_id" = "tu"."id")))
-     LEFT JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
+     LEFT JOIN "public"."knowledge_items" "ki" ON ((("ki"."id" = "ukm"."knowledge_id") AND ("ki"."is_enabled" = true))))
   WHERE ("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role", 'referente'::"public"."app_role"]))
   GROUP BY "tp"."id", "tp"."name", "tu"."id", "tu"."unit_order", "tu"."title"
   ORDER BY "tp"."id", "tu"."unit_order";
@@ -1824,7 +1963,7 @@ CREATE OR REPLACE VIEW "public"."v_org_program_unit_knowledge_coverage" WITH ("s
 ALTER VIEW "public"."v_org_program_unit_knowledge_coverage" OWNER TO "postgres";
 
 
-COMMENT ON VIEW "public"."v_org_program_unit_knowledge_coverage" IS 'Post-MVP4 K1: Coverage de knowledge por unidad. local_level_knowledge_count solo se computa si training_programs.local_id no es NULL; para programas org-level se reporta 0.';
+COMMENT ON VIEW "public"."v_org_program_unit_knowledge_coverage" IS 'Post-MVP4 K3: Coverage de knowledge por unidad (filtra is_enabled=true). local_level_knowledge_count solo se computa si training_programs.local_id no es NULL; para programas org-level se reporta 0.';
 
 
 
@@ -1846,7 +1985,7 @@ CREATE OR REPLACE VIEW "public"."v_org_program_knowledge_gaps_summary" WITH ("se
 ALTER VIEW "public"."v_org_program_knowledge_gaps_summary" OWNER TO "postgres";
 
 
-COMMENT ON VIEW "public"."v_org_program_knowledge_gaps_summary" IS 'Post-MVP4 K1: Resumen de gaps por programa (unidades, gaps, % gaps, mappings totales).';
+COMMENT ON VIEW "public"."v_org_program_knowledge_gaps_summary" IS 'Post-MVP4 K3: Resumen de gaps por programa (unidades, gaps, % gaps, mappings totales).';
 
 
 
@@ -1866,14 +2005,14 @@ CREATE OR REPLACE VIEW "public"."v_org_unit_knowledge_list" WITH ("security_barr
      JOIN "public"."training_units" "tu" ON (("tu"."program_id" = "tp"."id")))
      JOIN "public"."unit_knowledge_map" "ukm" ON (("ukm"."unit_id" = "tu"."id")))
      JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
-  WHERE ("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role", 'referente'::"public"."app_role"]))
+  WHERE (("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role", 'referente'::"public"."app_role"])) AND ("ki"."is_enabled" = true))
   ORDER BY "tp"."id", "tu"."unit_order", "ki"."created_at" DESC;
 
 
 ALTER VIEW "public"."v_org_unit_knowledge_list" OWNER TO "postgres";
 
 
-COMMENT ON VIEW "public"."v_org_unit_knowledge_list" IS 'Post-MVP4 K1: Knowledge asociado por unidad (drill-down, read-only).';
+COMMENT ON VIEW "public"."v_org_unit_knowledge_list" IS 'Post-MVP4 K3: Knowledge asociado por unidad (drill-down, read-only, filtra is_enabled=true).';
 
 
 
@@ -2439,6 +2578,10 @@ CREATE OR REPLACE TRIGGER "trg_final_evaluation_questions_prevent_update" BEFORE
 
 
 CREATE OR REPLACE TRIGGER "trg_knowledge_change_events_prevent_update" BEFORE DELETE OR UPDATE ON "public"."knowledge_change_events" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_knowledge_items_guard_disable_update" BEFORE UPDATE ON "public"."knowledge_items" FOR EACH ROW EXECUTE FUNCTION "public"."guard_knowledge_items_disable_update"();
 
 
 
@@ -3062,11 +3205,17 @@ CREATE POLICY "knowledge_items_select_admin_org" ON "public"."knowledge_items" F
 
 
 
-CREATE POLICY "knowledge_items_select_local_roles" ON "public"."knowledge_items" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"()))));
+CREATE POLICY "knowledge_items_select_local_roles" ON "public"."knowledge_items" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"())) AND ("is_enabled" = true)));
 
 
 
 CREATE POLICY "knowledge_items_select_superadmin" ON "public"."knowledge_items" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
+CREATE POLICY "knowledge_items_update_admin_org" ON "public"."knowledge_items" FOR UPDATE USING ((("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())))) WITH CHECK ((("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR (EXISTS ( SELECT 1
+   FROM "public"."locals" "l"
+  WHERE (("l"."id" = "knowledge_items"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))))));
 
 
 
@@ -3546,9 +3695,21 @@ GRANT ALL ON FUNCTION "public"."current_user_id"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."get_user_email"("target_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_user_email"("target_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_user_email"("target_user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."guard_knowledge_items_disable_update"() TO "anon";
+GRANT ALL ON FUNCTION "public"."guard_knowledge_items_disable_update"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."guard_knowledge_items_disable_update"() TO "service_role";
 
 
 
