@@ -2111,6 +2111,91 @@ COMMENT ON VIEW "public"."v_org_unit_coverage_30d" IS 'Post-MVP5 M1: Cobertura p
 
 
 
+CREATE OR REPLACE VIEW "public"."v_org_recommended_actions_30d" WITH ("security_barrier"='true') AS
+ WITH "ranked_gaps" AS (
+         SELECT "v_org_top_gaps_30d"."org_id",
+            "v_org_top_gaps_30d"."gap_key",
+            "v_org_top_gaps_30d"."learners_affected_count",
+            "v_org_top_gaps_30d"."percent_learners_affected",
+            "v_org_top_gaps_30d"."total_fail_events",
+            "row_number"() OVER (PARTITION BY "v_org_top_gaps_30d"."org_id" ORDER BY "v_org_top_gaps_30d"."total_fail_events" DESC) AS "gap_rank"
+           FROM "public"."v_org_top_gaps_30d"
+          WHERE (("v_org_top_gaps_30d"."percent_learners_affected" >= (25)::numeric) OR ("v_org_top_gaps_30d"."learners_affected_count" >= 3))
+        ), "ranked_coverage" AS (
+         SELECT "v_org_unit_coverage_30d"."org_id",
+            "v_org_unit_coverage_30d"."local_id",
+            "v_org_unit_coverage_30d"."program_id",
+            "v_org_unit_coverage_30d"."unit_order",
+            "v_org_unit_coverage_30d"."coverage_percent",
+            "v_org_unit_coverage_30d"."learners_active_count",
+            "row_number"() OVER (PARTITION BY "v_org_unit_coverage_30d"."org_id" ORDER BY "v_org_unit_coverage_30d"."coverage_percent") AS "coverage_rank"
+           FROM "public"."v_org_unit_coverage_30d"
+          WHERE (("v_org_unit_coverage_30d"."coverage_percent" IS NOT NULL) AND ("v_org_unit_coverage_30d"."coverage_percent" < (60)::numeric) AND (COALESCE("v_org_unit_coverage_30d"."learners_active_count", (0)::bigint) >= 2))
+        ), "ranked_risk" AS (
+         SELECT "v_org_learner_risk_30d"."org_id",
+            "v_org_learner_risk_30d"."local_id",
+            "v_org_learner_risk_30d"."learner_id",
+            "v_org_learner_risk_30d"."risk_level",
+            "v_org_learner_risk_30d"."last_signal_at",
+            "row_number"() OVER (PARTITION BY "v_org_learner_risk_30d"."org_id" ORDER BY
+                CASE "v_org_learner_risk_30d"."risk_level"
+                    WHEN 'high'::"text" THEN 1
+                    WHEN 'medium'::"text" THEN 2
+                    ELSE 3
+                END, "v_org_learner_risk_30d"."last_signal_at" DESC NULLS LAST) AS "risk_rank"
+           FROM "public"."v_org_learner_risk_30d"
+          WHERE ("v_org_learner_risk_30d"."risk_level" = ANY (ARRAY['high'::"text", 'medium'::"text"]))
+        )
+ SELECT "org_id",
+    "action_key",
+    "priority",
+    "title",
+    "reason",
+    "evidence",
+    "cta_label",
+    "cta_href",
+    "now"() AS "created_at"
+   FROM ( SELECT "g"."org_id",
+            'top_gap'::"text" AS "action_key",
+            (90 - ("g"."gap_rank" * 5)) AS "priority",
+            'Gap con alto impacto'::"text" AS "title",
+            (('% learners afectados por "'::"text" || "g"."gap_key") || '"'::"text") AS "reason",
+            "jsonb_build_object"('gap_key', "g"."gap_key", 'learners_affected_count', "g"."learners_affected_count", 'percent_learners_affected', "g"."percent_learners_affected") AS "evidence",
+            'Ver gaps'::"text" AS "cta_label",
+            ('/org/metrics/gaps/'::"text" || "g"."gap_key") AS "cta_href"
+           FROM "ranked_gaps" "g"
+        UNION ALL
+         SELECT "c"."org_id",
+            'low_coverage'::"text" AS "action_key",
+            (80 - ("c"."coverage_rank" * 5)) AS "priority",
+            'Cobertura baja en unidad'::"text" AS "title",
+            (('Cobertura '::"text" || "round"("c"."coverage_percent", 1)) || '% con learners activos'::"text") AS "reason",
+            "jsonb_build_object"('local_id', "c"."local_id", 'program_id', "c"."program_id", 'unit_order', "c"."unit_order", 'coverage_percent', "c"."coverage_percent") AS "evidence",
+            'Abrir cobertura'::"text" AS "cta_label",
+            ((('/org/metrics/coverage/'::"text" || "c"."program_id") || '/'::"text") || "c"."unit_order") AS "cta_href"
+           FROM "ranked_coverage" "c"
+        UNION ALL
+         SELECT "r"."org_id",
+            'learner_risk'::"text" AS "action_key",
+            (70 - ("r"."risk_rank" * 3)) AS "priority",
+            'Learner en riesgo'::"text" AS "title",
+            ('Riesgo '::"text" || "r"."risk_level") AS "reason",
+            "jsonb_build_object"('learner_id', "r"."learner_id", 'local_id', "r"."local_id", 'risk_level', "r"."risk_level", 'last_signal_at', "r"."last_signal_at") AS "evidence",
+            'Revisar learner'::"text" AS "cta_label",
+            ('/referente/review/'::"text" || "r"."learner_id") AS "cta_href"
+           FROM "ranked_risk" "r") "actions"
+  WHERE (("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR ("org_id" = "public"."current_org_id"())))
+  ORDER BY "priority" DESC
+ LIMIT 10;
+
+
+ALTER VIEW "public"."v_org_recommended_actions_30d" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_recommended_actions_30d" IS 'Post-MVP5 M3: Acciones sugeridas (30d) para Admin Org. Combina gaps, cobertura baja y learners en riesgo; read-only.';
+
+
+
 CREATE OR REPLACE VIEW "public"."v_org_unit_knowledge_active" WITH ("security_barrier"='true') AS
  SELECT "tp"."org_id",
     "tp"."id" AS "program_id",
@@ -4188,6 +4273,12 @@ GRANT ALL ON TABLE "public"."v_org_top_gaps_30d" TO "service_role";
 GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "anon";
 GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_recommended_actions_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_recommended_actions_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_recommended_actions_30d" TO "service_role";
 
 
 

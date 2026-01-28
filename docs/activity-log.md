@@ -1401,3 +1401,17 @@ Se agregan y ejecutan smokes DB-first para K1/K2/K3. Resultado: PASS en los tres
 - Evidencia reproducible de views y RPCs Post-MVP4
 - Guardrails de disable verificados
 - Base lista para Post-MVP5 sin deuda de QA
+
+## 2026-01-28 — Post-MVP5 M3: acciones sugeridas (read-only)
+
+**Tipo:** feature  
+**Alcance:** db | frontend | ux | docs
+
+**Resumen**
+Se agrega la view org-scoped v_org_recommended_actions_30d y un bloque de acciones sugeridas en /org/metrics (Resumen).
+
+**Impacto**
+
+- Sugerencias operativas explicables sin writes
+- Enlaces directos a drill-down y revisión
+- Priorización simple y determinística

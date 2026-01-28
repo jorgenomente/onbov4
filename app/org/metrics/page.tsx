@@ -42,6 +42,18 @@ type CoverageRow = {
   last_activity_at: string | null;
 };
 
+type ActionRow = {
+  org_id: string;
+  action_key: string;
+  priority: number;
+  title: string;
+  reason: string;
+  evidence: Record<string, unknown> | null;
+  cta_label: string;
+  cta_href: string;
+  created_at: string;
+};
+
 const TABS = [
   { id: 'summary', label: 'Resumen' },
   { id: 'gaps', label: 'Gaps' },
@@ -64,6 +76,16 @@ function formatDate(value: string | null | undefined) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('es-AR', { dateStyle: 'medium' });
+}
+
+function priorityBadge(priority: number) {
+  if (priority >= 85) {
+    return { label: 'Alta', className: 'bg-red-50 text-red-700' };
+  }
+  if (priority >= 70) {
+    return { label: 'Media', className: 'bg-amber-50 text-amber-700' };
+  }
+  return { label: 'Baja', className: 'bg-slate-100 text-slate-600' };
 }
 
 export default async function OrgMetricsPage({ searchParams }: PageProps) {
@@ -99,6 +121,14 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
     .order('coverage_percent', { ascending: true })
     .limit(200);
 
+  const { data: actions, error: actionsError } = await supabase
+    .from('v_org_recommended_actions_30d')
+    .select(
+      'org_id, action_key, priority, title, reason, evidence, cta_label, cta_href, created_at',
+    )
+    .order('priority', { ascending: false })
+    .limit(10);
+
   const topGap = (gaps ?? [])[0];
   const learnersAtRisk = (risks ?? []).length;
   const avgCoverage =
@@ -125,7 +155,7 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
         </div>
       </header>
 
-      {(gapsError || riskError || coverageError) && (
+      {(gapsError || riskError || coverageError || actionsError) && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Error al cargar métricas. Intentá nuevamente.
         </div>
@@ -148,27 +178,86 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
       </nav>
 
       {activeTab === 'summary' ? (
-        <section className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">Learners en riesgo</p>
-            <p className="text-2xl font-semibold text-slate-900">
-              {learnersAtRisk}
-            </p>
+        <section className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <p className="text-xs text-slate-500">Learners en riesgo</p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {learnersAtRisk}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <p className="text-xs text-slate-500">Top gap</p>
+              <p className="text-base font-semibold text-slate-900">
+                {topGap?.title ?? '—'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {topGap?.learners_affected_count ?? 0} learners afectados
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <p className="text-xs text-slate-500">Cobertura promedio</p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {avgCoverage === null ? '—' : formatPercent(avgCoverage)}
+              </p>
+            </div>
           </div>
+
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">Top gap</p>
-            <p className="text-base font-semibold text-slate-900">
-              {topGap?.title ?? '—'}
-            </p>
-            <p className="text-xs text-slate-500">
-              {topGap?.learners_affected_count ?? 0} learners afectados
-            </p>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">Cobertura promedio</p>
-            <p className="text-2xl font-semibold text-slate-900">
-              {avgCoverage === null ? '—' : formatPercent(avgCoverage)}
-            </p>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-800">
+                Acciones sugeridas (30 días)
+              </h2>
+              <Link href="/org/metrics" className="text-xs text-slate-400">
+                Ver todo
+              </Link>
+            </div>
+            {(actions ?? []).length === 0 ? (
+              <div className="mt-3 rounded-md border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                No hay acciones sugeridas con señales en 30 días.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {(actions as ActionRow[]).map((action) => {
+                  const badge = priorityBadge(action.priority);
+                  const gapKey =
+                    action.action_key === 'top_gap' &&
+                    action.evidence &&
+                    typeof action.evidence.gap_key === 'string'
+                      ? action.evidence.gap_key
+                      : null;
+                  const href = gapKey
+                    ? `/org/metrics/gaps/${encodeURIComponent(gapKey)}`
+                    : action.cta_href;
+                  return (
+                    <div
+                      key={`${action.action_key}-${action.cta_href}`}
+                      className="rounded-md border border-slate-200 p-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {action.title}
+                        </p>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}
+                        >
+                          {badge.label}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {action.reason}
+                      </p>
+                      <Link
+                        href={href}
+                        className="mt-2 inline-flex text-xs font-semibold text-slate-700 hover:text-slate-900"
+                      >
+                        {action.cta_label} →
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
       ) : null}

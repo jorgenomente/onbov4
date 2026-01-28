@@ -379,6 +379,15 @@
 | v_org_program_unit_knowledge_coverage   | local_level_knowledge_count     | bigint                   | false    |                                    |
 | v_org_program_unit_knowledge_coverage   | has_any_mapping                 | boolean                  | false    |                                    |
 | v_org_program_unit_knowledge_coverage   | is_missing_mapping              | boolean                  | false    |                                    |
+| v_org_recommended_actions_30d           | org_id                          | uuid                     | false    |                                    |
+| v_org_recommended_actions_30d           | action_key                      | text                     | false    |                                    |
+| v_org_recommended_actions_30d           | priority                        | bigint                   | false    |                                    |
+| v_org_recommended_actions_30d           | title                           | text                     | false    |                                    |
+| v_org_recommended_actions_30d           | reason                          | text                     | false    |                                    |
+| v_org_recommended_actions_30d           | evidence                        | jsonb                    | false    |                                    |
+| v_org_recommended_actions_30d           | cta_label                       | text                     | false    |                                    |
+| v_org_recommended_actions_30d           | cta_href                        | text                     | false    |                                    |
+| v_org_recommended_actions_30d           | created_at                      | timestamp with time zone | false    |                                    |
 | v_org_top_gaps_30d                      | org_id                          | uuid                     | false    |                                    |
 | v_org_top_gaps_30d                      | gap_key                         | text                     | false    |                                    |
 | v_org_top_gaps_30d                      | unit_order                      | integer                  | false    |                                    |
