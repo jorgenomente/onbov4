@@ -376,6 +376,10 @@ Antes de marcar algo como “listo”, el proyecto debe:
 - respetar RLS
 - ser usable en mobile
 
+Notas de QA:
+
+- Credenciales de smoke tests: usar `docs/smoke-credentials.md` como fuente de usuarios y contrasenas para validaciones manuales/E2E.
+
 ---
 
 ## 10) Ticket Prompt Templates
