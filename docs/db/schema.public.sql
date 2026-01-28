@@ -115,6 +115,18 @@ begin
       using errcode = '22023';
   end if;
 
+  -- Guardrail: no permitir cambios si hay intento en progreso.
+  -- Nota: asumimos status = 'in_progress' (alineado a engine). Si tu enum difiere, ajustar el literal.
+  if exists (
+    select 1
+    from public.final_evaluation_attempts a
+    where a.program_id = p_program_id
+      and a.status = 'in_progress'
+  ) then
+    raise exception 'conflict: cannot create new config while an attempt is in progress for program_id %', p_program_id
+      using errcode = '23505';
+  end if;
+
   -- Validaciones de parametros (guardrails minimos)
   if p_total_questions is null or p_total_questions <= 0 then
     raise exception 'invalid: total_questions must be > 0'
@@ -127,7 +139,6 @@ begin
   end if;
 
   if p_min_global_score is null or p_min_global_score < 0 or p_min_global_score > 100 then
-    -- Score esperado en porcentaje 0..100 (alineado a engine actual).
     raise exception 'invalid: min_global_score must be between 0 and 100'
       using errcode = '22023';
   end if;
@@ -178,7 +189,7 @@ $$;
 ALTER FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) IS 'Post-MVP3 C.2: Insert-only RPC to create a new final_evaluation_configs row (versioning by created_at). Admin Org / Superadmin only.';
+COMMENT ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) IS 'Post-MVP3 D.2/C.3: Insert-only RPC to create a new final_evaluation_configs row. Guardrail: blocks if final_evaluation_attempts has status=in_progress for the program.';
 
 
 

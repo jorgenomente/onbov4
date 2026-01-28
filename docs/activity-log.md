@@ -1224,3 +1224,16 @@ Se ajusta la firma de page.tsx para await searchParams (Promise) en App Router y
 
 - Evita rebote al seleccionar programa
 - Sin cambios funcionales adicionales
+
+## 2026-01-28 — Post-MVP3 D.2/C.3: guardrail config con intento en progreso
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se endurece la RPC create_final_evaluation_config para bloquear nuevas configs si existe un intento final_evaluation_attempts en status in_progress para el programa.
+
+**Impacto**
+
+- Evita cambios de config durante intentos activos
+- Sin cambios de schema ni engine
