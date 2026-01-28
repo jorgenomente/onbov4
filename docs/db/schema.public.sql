@@ -340,6 +340,139 @@ COMMENT ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uu
 
 
 
+CREATE OR REPLACE FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[] DEFAULT NULL::"text"[], "p_difficulty" integer DEFAULT 1, "p_local_id" "uuid" DEFAULT NULL::"uuid") RETURNS TABLE("id" "uuid", "created_at" timestamp with time zone)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  v_role text;
+  v_org_id uuid;
+  v_program_org_id uuid;
+  v_program_local_id uuid;
+  v_local_org_id uuid;
+  v_title text;
+  v_instructions text;
+  v_difficulty integer;
+begin
+  perform set_config('row_security', 'on', true);
+
+  v_role := public.current_role();
+  v_org_id := public.current_org_id();
+
+  if v_role not in ('admin_org', 'superadmin') then
+    raise exception 'forbidden: role % cannot create practice scenario', v_role
+      using errcode = '42501';
+  end if;
+
+  select tp.org_id, tp.local_id
+    into v_program_org_id, v_program_local_id
+  from public.training_programs tp
+  where tp.id = p_program_id;
+
+  if v_program_org_id is null then
+    raise exception 'not_found: program_id % not found', p_program_id
+      using errcode = '22023';
+  end if;
+
+  if v_role = 'admin_org' then
+    if v_program_org_id <> v_org_id then
+      raise exception 'not_found: program_id % not in org scope', p_program_id
+        using errcode = '22023';
+    end if;
+    if v_program_local_id is not null then
+      raise exception 'invalid: program_id % is local-specific and not allowed for admin_org', p_program_id
+        using errcode = '22023';
+    end if;
+    if p_local_id is not null then
+      raise exception 'invalid: local_id must be null for admin_org'
+        using errcode = '22023';
+    end if;
+  end if;
+
+  if p_unit_order is null or p_unit_order <= 0 then
+    raise exception 'invalid: unit_order must be >= 1'
+      using errcode = '22023';
+  end if;
+
+  if not exists (
+    select 1
+    from public.training_units tu
+    where tu.program_id = p_program_id
+      and tu.unit_order = p_unit_order
+  ) then
+    raise exception 'not_found: unit_order % not in program_id %', p_unit_order, p_program_id
+      using errcode = '22023';
+  end if;
+
+  v_title := trim(coalesce(p_title, ''));
+  v_instructions := trim(coalesce(p_instructions, ''));
+
+  if length(v_title) = 0 then
+    raise exception 'invalid: title is required'
+      using errcode = '22023';
+  end if;
+
+  if length(v_instructions) = 0 then
+    raise exception 'invalid: instructions are required'
+      using errcode = '22023';
+  end if;
+
+  v_difficulty := coalesce(p_difficulty, 1);
+  if v_difficulty < 1 or v_difficulty > 5 then
+    raise exception 'invalid: difficulty must be between 1 and 5'
+      using errcode = '22023';
+  end if;
+
+  if p_local_id is not null then
+    select l.org_id
+      into v_local_org_id
+    from public.locals l
+    where l.id = p_local_id;
+
+    if v_local_org_id is null then
+      raise exception 'not_found: local_id % not found', p_local_id
+        using errcode = '22023';
+    end if;
+    if v_local_org_id <> v_program_org_id then
+      raise exception 'invalid: local_id % not in program org scope', p_local_id
+        using errcode = '22023';
+    end if;
+  end if;
+
+  insert into public.practice_scenarios (
+    org_id,
+    local_id,
+    program_id,
+    unit_order,
+    title,
+    difficulty,
+    instructions,
+    success_criteria
+  ) values (
+    v_program_org_id,
+    case when v_role = 'admin_org' then null else p_local_id end,
+    p_program_id,
+    p_unit_order,
+    v_title,
+    v_difficulty,
+    v_instructions,
+    coalesce(p_success_criteria, '{}'::text[])
+  )
+  returning practice_scenarios.id, practice_scenarios.created_at
+    into id, created_at;
+
+  return;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") IS 'Post-MVP6 S3: create-only practice_scenarios. Admin Org: org-level only (local_id NULL). Superadmin: org/local. Validates program + unit_order + difficulty.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."current_local_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -4069,6 +4202,16 @@ CREATE POLICY "practice_evaluations_select_superadmin" ON "public"."practice_eva
 ALTER TABLE "public"."practice_scenarios" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "practice_scenarios_insert_admin_org" ON "public"."practice_scenarios" FOR INSERT WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL) AND (EXISTS ( SELECT 1
+   FROM "public"."training_programs" "tp"
+  WHERE (("tp"."id" = "practice_scenarios"."program_id") AND ("tp"."org_id" = "public"."current_org_id"()) AND ("tp"."local_id" IS NULL))))));
+
+
+
+CREATE POLICY "practice_scenarios_insert_superadmin" ON "public"."practice_scenarios" FOR INSERT WITH CHECK (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
 CREATE POLICY "practice_scenarios_select_admin_org" ON "public"."practice_scenarios" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
 
 
@@ -4162,6 +4305,12 @@ GRANT ALL ON FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "u
 GRANT ALL ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") TO "service_role";
 
 
 

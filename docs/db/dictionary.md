@@ -930,11 +930,15 @@
 
 - RLS: enabled
 
-| policy_name                           | command | using                                                                                                                                                                       | with_check |
-| ------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| practice_scenarios_select_admin_org   | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                |            |
-| practice_scenarios_select_local_roles | SELECT  | (("current_role"() = ANY (ARRAY['referente'::app_role, 'aprendiz'::app_role])) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (local_id = current_local_id()))) |            |
-| practice_scenarios_select_superadmin  | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
+| policy_name                                                                                                     | command | using                                                                                                                                                                       | with_check |
+| --------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| practice_scenarios_insert_admin_org                                                                             | INSERT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()) AND (local_id IS NULL) AND (EXISTS ( SELECT 1                                                   |            |
+| FROM training_programs tp                                                                                       |         |                                                                                                                                                                             |            |
+| WHERE ((tp.id = practice_scenarios.program_id) AND (tp.org_id = current_org_id()) AND (tp.local_id IS NULL))))) |         |                                                                                                                                                                             |            |
+| practice_scenarios_insert_superadmin                                                                            | INSERT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
+| practice_scenarios_select_admin_org                                                                             | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                |            |
+| practice_scenarios_select_local_roles                                                                           | SELECT  | (("current_role"() = ANY (ARRAY['referente'::app_role, 'aprendiz'::app_role])) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (local_id = current_local_id()))) |            |
+| practice_scenarios_select_superadmin                                                                            | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
 
 ### profiles
 

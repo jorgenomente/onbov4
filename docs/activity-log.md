@@ -1502,3 +1502,18 @@ Se agregan views read-only para lectura operativa de configuracion del bot por l
 - Qué cambia: agrega contratos de lectura sin tocar UI
 - Qué NO cambia: no modifica RLS, ni writes, ni prompts
 - Próximos pasos sugeridos: evaluar si se expone UI o se agrega RPCs para completar gaps
+
+## 2026-01-28 — Post-MVP6 Sub-lote 3: create-only practice_scenarios (RPC + RLS)
+
+**Tipo:** feature  
+**Alcance:** db | docs
+
+**Resumen**
+Se agrega RPC create-only para practice_scenarios con validaciones de programa y unidad, y policies INSERT para admin_org (ORG-level) y superadmin.
+
+**Impacto**
+
+- Qué habilita: creacion controlada de escenarios de practica sin UI
+- Qué cambia: nuevo RPC y policies INSERT en practice_scenarios
+- Qué NO cambia: no agrega auditoria ni UI, no permite updates/deletes
+- Próximos pasos sugeridos: definir auditoria append-only de creacion (Sub-lote 3.1 si aplica)

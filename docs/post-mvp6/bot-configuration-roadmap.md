@@ -243,6 +243,14 @@ Formato estricto (ya usado en practica y evaluacion final):
 - RPC minima (ej: crear escenario de practica o registrar plantilla por programa).
 - Auditoria append-only asociada.
 
+**Estado**: Hecho (2026-01-28)
+
+**Implementado**
+
+- RPC `create_practice_scenario` (create-only) con validaciones de program_id + unit_order + difficulty.
+- Scope: admin_org solo ORG-level (local_id NULL); superadmin puede ORG/local.
+- Sin auditoria de creacion (pendiente si se decide Sub-lote 3.1).
+
 **Riesgos**
 
 - Exceso de libertad (deriva hacia LMS).
@@ -277,8 +285,8 @@ Formato estricto (ya usado en practica y evaluacion final):
    - Resolver: inspeccionar necesidades reales del motor y UX; si se aprueba, agregar columna en `knowledge_items`.
 2. Se permite configurar prompts/plantillas por programa?
    - Resolver: definir si se guarda en DB o en plantillas versionadas en codigo.
-3. Quien puede gestionar practice_scenarios (Admin Org vs Superadmin) y con que guardrails?
-   - Resolver: revisar RLS/policies existentes (hoy solo SELECT) y definir si habilitar writes.
+3. Resuelto: practice_scenarios create-only con admin_org ORG-level y superadmin ORG/local (Sub-lote 3).
+   - Pendiente: definir auditoria append-only para creacion (posible Sub-lote 3.1).
 4. Repaso tendra bot activo o seguira read-only?
    - Resolver: revisar UX deseada y definir si necesita contenido/config adicional.
 5. Se requiere granularidad por local en final_evaluation_configs?
