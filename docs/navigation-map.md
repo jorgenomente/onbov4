@@ -16,6 +16,15 @@ Regla dura:
 - /login
   - Success -> /auth/redirect (server-side)
   - /auth/redirect -> redirige por rol (no UI)
+- /auth/logout
+  - server-side -> redirige a /login
+
+### Entry / root
+
+- /
+  - redirect server-side:
+    - si hay sesion -> /auth/redirect
+    - si no hay sesion -> /login
 
 ### Destinos por rol (no “home” generica)
 
@@ -123,6 +132,9 @@ Credenciales demo/local para QA: docs/smoke-credentials.md
   - CTA secundario:
     - “Cobertura de knowledge” -> /org/config/knowledge-coverage
     - “Configurar programa activo por local” -> (ver seccion C)
+  - Drilldowns:
+    - /org/metrics/coverage/[programId]/[unitOrder]
+    - /org/metrics/gaps/[unitOrder]
 
 > Nota: hoy hay dos rutas mencionadas en el proyecto para config bot:
 >
@@ -140,10 +152,10 @@ Credenciales demo/local para QA: docs/smoke-credentials.md
 
 ### C) Programa activo por local (si esta integrado en /org/config/bot o ruta dedicada)
 
-- (Si es ruta dedicada, documentarla explicitamente aca cuando exista)
+- /org/config/locals-program
   - Proposito: set_local_active_program + auditoria
   - CTA primario: “Asignar programa”
-  - CTA secundario: “Volver a config” / “Volver a metricas”
+  - CTA secundario: “Volver a metricas” -> /org/metrics
 
 ### D) Knowledge coverage + wizard
 
@@ -212,3 +224,13 @@ Regla:
 - [ ] Cada ruta listada aca tiene al menos 1 entrypoint desde su layout o una CTA desde otra pantalla.
 - [ ] No hay links “sueltos” a URLs no listadas.
 - [ ] Los CTAs primarios empujan el flujo (no navegacion turistica).
+
+---
+
+## 7) Rutas reales incorporadas por auditoria 2026-01-28
+
+- /
+- /auth/logout
+- /org/config/locals-program
+- /org/metrics/coverage/[programId]/[unitOrder]
+- /org/metrics/gaps/[unitOrder]

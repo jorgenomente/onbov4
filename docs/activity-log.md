@@ -1630,3 +1630,17 @@ Se crea docs/navigation-map.md como fuente operativa de rutas y flujos por rol, 
 - Qué habilita: referencia unica y auditada de navegacion
 - Qué cambia: la IA debe leer navigation-map antes de cambios de rutas/UX
 - Qué NO cambia: no modifica pantallas ni permisos
+
+## 2026-01-28 — Navigation map reconciliado con auditoria de rutas
+
+**Tipo:** docs  
+**Alcance:** ux | docs
+
+**Resumen**
+Se incorporan en el navigation map las rutas reales detectadas por auditoria (/auth/logout, /org/config/locals-program y drilldowns de metricas) y se documenta el redirect esperado de /.
+
+**Impacto**
+
+- Qué habilita: mapa alineado con rutas reales
+- Qué cambia: el mapa incluye entradas para drilldowns y root redirect
+- Qué NO cambia: no modifica layouts ni implementa redirects
