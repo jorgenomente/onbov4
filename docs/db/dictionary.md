@@ -388,6 +388,18 @@
 | v_org_recommended_actions_30d           | cta_label                       | text                     | false    |                                    |
 | v_org_recommended_actions_30d           | cta_href                        | text                     | false    |                                    |
 | v_org_recommended_actions_30d           | created_at                      | timestamp with time zone | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | org_id                          | uuid                     | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | action_key                      | text                     | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | priority                        | bigint                   | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | title                           | text                     | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | reason                          | text                     | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | evidence                        | jsonb                    | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | cta_label                       | text                     | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | cta_href                        | text                     | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | checklist                       | ARRAY                    | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | impact_note                     | text                     | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | secondary_links                 | jsonb                    | false    |                                    |
+| v_org_recommended_actions_playbooks_30d | created_at                      | timestamp with time zone | false    |                                    |
 | v_org_top_gaps_30d                      | org_id                          | uuid                     | false    |                                    |
 | v_org_top_gaps_30d                      | gap_key                         | text                     | false    |                                    |
 | v_org_top_gaps_30d                      | unit_order                      | integer                  | false    |                                    |

@@ -51,6 +51,9 @@ type ActionRow = {
   evidence: Record<string, unknown> | null;
   cta_label: string;
   cta_href: string;
+  checklist: string[] | null;
+  impact_note: string | null;
+  secondary_links: Array<{ label: string; href: string }> | null;
   created_at: string;
 };
 
@@ -122,9 +125,9 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
     .limit(200);
 
   const { data: actions, error: actionsError } = await supabase
-    .from('v_org_recommended_actions_30d')
+    .from('v_org_recommended_actions_playbooks_30d')
     .select(
-      'org_id, action_key, priority, title, reason, evidence, cta_label, cta_href, created_at',
+      'org_id, action_key, priority, title, reason, evidence, cta_label, cta_href, checklist, impact_note, secondary_links, created_at',
     )
     .order('priority', { ascending: false })
     .limit(10);
@@ -229,6 +232,17 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
                   const href = gapKey
                     ? `/org/metrics/gaps/${encodeURIComponent(gapKey)}`
                     : action.cta_href;
+                  const checklist = Array.isArray(action.checklist)
+                    ? action.checklist
+                    : [];
+                  const secondaryLinks = Array.isArray(action.secondary_links)
+                    ? action.secondary_links.filter(
+                        (link) =>
+                          link &&
+                          typeof link.label === 'string' &&
+                          typeof link.href === 'string',
+                      )
+                    : [];
                   return (
                     <div
                       key={`${action.action_key}-${action.cta_href}`}
@@ -247,12 +261,37 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
                       <p className="mt-1 text-xs text-slate-500">
                         {action.reason}
                       </p>
+                      {checklist.length > 0 ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500">
+                          {checklist.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {action.impact_note ? (
+                        <p className="mt-2 text-xs text-slate-400">
+                          {action.impact_note}
+                        </p>
+                      ) : null}
                       <Link
                         href={href}
                         className="mt-2 inline-flex text-xs font-semibold text-slate-700 hover:text-slate-900"
                       >
                         {action.cta_label} →
                       </Link>
+                      {secondaryLinks.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {secondaryLinks.map((link) => (
+                            <Link
+                              key={`${link.label}-${link.href}`}
+                              href={link.href}
+                              className="text-xs text-slate-500 hover:text-slate-700"
+                            >
+                              {link.label}
+                            </Link>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

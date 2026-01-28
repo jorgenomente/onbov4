@@ -2196,6 +2196,45 @@ COMMENT ON VIEW "public"."v_org_recommended_actions_30d" IS 'Post-MVP5 M3: Accio
 
 
 
+CREATE OR REPLACE VIEW "public"."v_org_recommended_actions_playbooks_30d" WITH ("security_barrier"='true') AS
+ SELECT "org_id",
+    "action_key",
+    "priority",
+    "title",
+    "reason",
+    "evidence",
+    "cta_label",
+    "cta_href",
+        CASE "action_key"
+            WHEN 'top_gap'::"text" THEN ARRAY['Abrí el gap y revisá en qué locales pega más.'::"text", 'Revisá cobertura de knowledge de la unidad asociada (si aplica) y completá faltantes.'::"text", 'Revisá si hay knowledge desactualizado y desactivalo.'::"text", 'Pedí al referente revisar conversaciones de 2–3 aprendices afectados.'::"text"]
+            WHEN 'low_coverage'::"text" THEN ARRAY['Abrí la unidad/local con baja cobertura.'::"text", 'Confirmá si falta knowledge mapeado o si está deshabilitado.'::"text", 'Agregá knowledge faltante con el wizard (si corresponde).'::"text", 'Monitoreá la cobertura en 24–48h.'::"text"]
+            WHEN 'learner_risk'::"text" THEN ARRAY['Abrí el detalle del aprendiz y revisá evidencia (errores y señales).'::"text", 'Si corresponde, pedí refuerzo con decisión humana.'::"text", 'Verificá si el programa activo del local está bien asignado.'::"text"]
+            ELSE ARRAY['Revisá el detalle y validá si requiere intervención.'::"text"]
+        END AS "checklist",
+        CASE "action_key"
+            WHEN 'top_gap'::"text" THEN 'Reducir este gap suele mejorar respuestas en escenarios reales y bajar revisiones.'::"text"
+            WHEN 'low_coverage'::"text" THEN 'Más cobertura suele reducir dudas y respuestas incompletas.'::"text"
+            WHEN 'learner_risk'::"text" THEN 'Intervenir temprano reduce el tiempo en revisión y mejora consistencia.'::"text"
+            ELSE 'Acción sugerida para mantener operación estable.'::"text"
+        END AS "impact_note",
+        CASE "action_key"
+            WHEN 'top_gap'::"text" THEN "jsonb_build_array"("jsonb_build_object"('label', 'Ver gap por local', 'href', "cta_href"), "jsonb_build_object"('label', 'Cobertura de conocimiento', 'href', '/org/config/knowledge-coverage'), "jsonb_build_object"('label', 'Configuración evaluación final', 'href', '/org/config/bot'))
+            WHEN 'low_coverage'::"text" THEN "jsonb_build_array"("jsonb_build_object"('label', 'Abrir detalle cobertura', 'href', "cta_href"), "jsonb_build_object"('label', 'Cobertura de conocimiento', 'href', '/org/config/knowledge-coverage'))
+            WHEN 'learner_risk'::"text" THEN "jsonb_build_array"("jsonb_build_object"('label', 'Abrir revisión del aprendiz', 'href', "cta_href"), "jsonb_build_object"('label', 'Programa activo por local', 'href', '/org/config/locals-program'))
+            ELSE "jsonb_build_array"()
+        END AS "secondary_links",
+    "created_at"
+   FROM "public"."v_org_recommended_actions_30d" "a"
+  WHERE (("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR ("org_id" = "public"."current_org_id"())));
+
+
+ALTER VIEW "public"."v_org_recommended_actions_playbooks_30d" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_recommended_actions_playbooks_30d" IS 'Post-MVP5 M4: Playbooks determinísticos para acciones sugeridas (checklist, impacto, links secundarios).';
+
+
+
 CREATE OR REPLACE VIEW "public"."v_org_unit_knowledge_active" WITH ("security_barrier"='true') AS
  SELECT "tp"."org_id",
     "tp"."id" AS "program_id",
@@ -4279,6 +4318,12 @@ GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "service_role";
 GRANT ALL ON TABLE "public"."v_org_recommended_actions_30d" TO "anon";
 GRANT ALL ON TABLE "public"."v_org_recommended_actions_30d" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_org_recommended_actions_30d" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_recommended_actions_playbooks_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_recommended_actions_playbooks_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_recommended_actions_playbooks_30d" TO "service_role";
 
 
 

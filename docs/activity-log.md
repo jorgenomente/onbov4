@@ -1415,3 +1415,17 @@ Se agrega la view org-scoped v_org_recommended_actions_30d y un bloque de accion
 - Sugerencias operativas explicables sin writes
 - Enlaces directos a drill-down y revisión
 - Priorización simple y determinística
+
+## 2026-01-28 — Post-MVP5 M4: playbooks para acciones sugeridas
+
+**Tipo:** feature  
+**Alcance:** db | frontend | ux | docs
+
+**Resumen**
+Se agrega la view v_org_recommended_actions_playbooks_30d con checklist, impacto y links secundarios, y se renderizan en /org/metrics (Resumen).
+
+**Impacto**
+
+- Acciones sugeridas con pasos concretos
+- CTA principal + links secundarios
+- Sin writes ni reglas dinámicas
