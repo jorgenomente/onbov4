@@ -353,6 +353,7 @@ declare
   v_title text;
   v_instructions text;
   v_difficulty integer;
+  v_scenario_local_id uuid;
 begin
   perform set_config('row_security', 'on', true);
 
@@ -439,6 +440,8 @@ begin
     end if;
   end if;
 
+  v_scenario_local_id := case when v_role = 'admin_org' then null else p_local_id end;
+
   insert into public.practice_scenarios (
     org_id,
     local_id,
@@ -450,7 +453,7 @@ begin
     success_criteria
   ) values (
     v_program_org_id,
-    case when v_role = 'admin_org' then null else p_local_id end,
+    v_scenario_local_id,
     p_program_id,
     p_unit_order,
     v_title,
@@ -461,6 +464,26 @@ begin
   returning practice_scenarios.id, practice_scenarios.created_at
     into id, created_at;
 
+  insert into public.practice_scenario_change_events (
+    org_id,
+    local_id,
+    scenario_id,
+    actor_user_id,
+    event_type,
+    payload
+  ) values (
+    v_program_org_id,
+    v_scenario_local_id,
+    id,
+    auth.uid(),
+    'created',
+    jsonb_build_object(
+      'program_id', p_program_id,
+      'unit_order', p_unit_order,
+      'difficulty', v_difficulty
+    )
+  );
+
   return;
 end;
 $$;
@@ -469,7 +492,7 @@ $$;
 ALTER FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") IS 'Post-MVP6 S3: create-only practice_scenarios. Admin Org: org-level only (local_id NULL). Superadmin: org/local. Validates program + unit_order + difficulty.';
+COMMENT ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") IS 'Post-MVP6 S3.1: create-only practice_scenarios + audit event. Admin Org: org-level only (local_id NULL). Superadmin: org/local. Validates program + unit_order + difficulty.';
 
 
 
@@ -647,6 +670,92 @@ ALTER FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_rea
 
 
 COMMENT ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") IS 'Post-MVP4 K3: disable knowledge item (is_enabled=false) and emit audit events per mapping.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text" DEFAULT NULL::"text") RETURNS TABLE("id" "uuid", "disabled_at" timestamp with time zone)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  v_role text;
+  v_org_id uuid;
+  v_scenario_org_id uuid;
+  v_scenario_local_id uuid;
+  v_program_id uuid;
+  v_unit_order integer;
+  v_difficulty integer;
+  v_is_enabled boolean;
+begin
+  perform set_config('row_security', 'on', true);
+
+  v_role := public.current_role();
+  v_org_id := public.current_org_id();
+
+  if v_role not in ('admin_org', 'superadmin') then
+    raise exception 'forbidden: role % cannot disable practice scenario', v_role
+      using errcode = '42501';
+  end if;
+
+  select ps.org_id, ps.local_id, ps.program_id, ps.unit_order, ps.difficulty, ps.is_enabled
+    into v_scenario_org_id, v_scenario_local_id, v_program_id, v_unit_order, v_difficulty, v_is_enabled
+  from public.practice_scenarios ps
+  where ps.id = p_scenario_id;
+
+  if v_scenario_org_id is null then
+    raise exception 'not_found: scenario_id % not found', p_scenario_id
+      using errcode = '22023';
+  end if;
+
+  if v_role = 'admin_org' then
+    if v_scenario_org_id <> v_org_id then
+      raise exception 'not_found: scenario_id % not in org scope', p_scenario_id
+        using errcode = '22023';
+    end if;
+    if v_scenario_local_id is not null then
+      raise exception 'invalid: scenario_id % is local-specific and not allowed for admin_org', p_scenario_id
+        using errcode = '22023';
+    end if;
+  end if;
+
+  update public.practice_scenarios
+    set is_enabled = false
+  where id = p_scenario_id;
+
+  disabled_at := now();
+  id := p_scenario_id;
+
+  insert into public.practice_scenario_change_events (
+    org_id,
+    local_id,
+    scenario_id,
+    actor_user_id,
+    event_type,
+    payload
+  ) values (
+    v_scenario_org_id,
+    v_scenario_local_id,
+    p_scenario_id,
+    auth.uid(),
+    'disabled',
+    jsonb_build_object(
+      'reason', p_reason,
+      'program_id', v_program_id,
+      'unit_order', v_unit_order,
+      'difficulty', v_difficulty,
+      'was_enabled', v_is_enabled
+    )
+  );
+
+  return;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") IS 'Post-MVP6 S3.1: disable (soft) practice_scenarios + audit event. Admin Org: org-level only. Superadmin: org/local.';
 
 
 
@@ -1339,6 +1448,34 @@ CREATE TABLE IF NOT EXISTS "public"."practice_evaluations" (
 ALTER TABLE "public"."practice_evaluations" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."practice_scenario_change_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "local_id" "uuid",
+    "scenario_id" "uuid" NOT NULL,
+    "actor_user_id" "uuid",
+    "event_type" "text" NOT NULL,
+    "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "practice_scenario_change_events_event_type_check" CHECK (("event_type" = ANY (ARRAY['created'::"text", 'disabled'::"text", 'enabled'::"text"])))
+);
+
+
+ALTER TABLE "public"."practice_scenario_change_events" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."practice_scenario_change_events" IS 'Post-MVP6 S3.1: audit append-only for practice_scenarios create/disable.';
+
+
+
+COMMENT ON COLUMN "public"."practice_scenario_change_events"."event_type" IS 'created | disabled | enabled (future).';
+
+
+
+COMMENT ON COLUMN "public"."practice_scenario_change_events"."payload" IS 'Payload JSON con contexto minimo (program_id, unit_order, difficulty, reason).';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."practice_scenarios" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "org_id" "uuid" NOT NULL,
@@ -1350,12 +1487,17 @@ CREATE TABLE IF NOT EXISTS "public"."practice_scenarios" (
     "instructions" "text" NOT NULL,
     "success_criteria" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "is_enabled" boolean DEFAULT true NOT NULL,
     CONSTRAINT "practice_scenarios_difficulty_check" CHECK ((("difficulty" >= 1) AND ("difficulty" <= 5))),
     CONSTRAINT "practice_scenarios_unit_order_check" CHECK (("unit_order" >= 1))
 );
 
 
 ALTER TABLE "public"."practice_scenarios" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."practice_scenarios"."is_enabled" IS 'Post-MVP6 S3.1: soft-disable flag for practice_scenarios (true = enabled).';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."profiles" (
@@ -1699,7 +1841,7 @@ CREATE OR REPLACE VIEW "public"."v_local_bot_config_units" WITH ("security_barri
             "max"("ps"."difficulty") AS "practice_difficulty_max",
             "sum"(COALESCE("array_length"("ps"."success_criteria", 1), 0)) AS "success_criteria_count_total"
            FROM "public"."practice_scenarios" "ps"
-          WHERE (("ps"."program_id" = "tp"."id") AND ("ps"."unit_order" = "tu"."unit_order") AND (("ps"."local_id" IS NULL) OR ("ps"."local_id" = "lap"."local_id")))) "practice" ON (true));
+          WHERE (("ps"."program_id" = "tp"."id") AND ("ps"."unit_order" = "tu"."unit_order") AND ("ps"."is_enabled" = true) AND (("ps"."local_id" IS NULL) OR ("ps"."local_id" = "lap"."local_id")))) "practice" ON (true));
 
 
 ALTER VIEW "public"."v_local_bot_config_units" OWNER TO "postgres";
@@ -1769,7 +1911,7 @@ CREATE OR REPLACE VIEW "public"."v_local_bot_config_summary" WITH ("security_bar
           WHERE (("tu"."program_id" = "tp"."id") AND ("ki"."is_enabled" = true) AND (("ki"."local_id" IS NULL) OR ("ki"."local_id" = "lap"."local_id")))) "knowledge" ON (true))
      LEFT JOIN LATERAL ( SELECT "count"(*) AS "total_practice_scenarios"
            FROM "public"."practice_scenarios" "ps"
-          WHERE (("ps"."program_id" = "tp"."id") AND (("ps"."local_id" IS NULL) OR ("ps"."local_id" = "lap"."local_id")))) "practice" ON (true));
+          WHERE (("ps"."program_id" = "tp"."id") AND ("ps"."is_enabled" = true) AND (("ps"."local_id" IS NULL) OR ("ps"."local_id" = "lap"."local_id")))) "practice" ON (true));
 
 
 ALTER VIEW "public"."v_local_bot_config_summary" OWNER TO "postgres";
@@ -2868,6 +3010,11 @@ ALTER TABLE ONLY "public"."practice_evaluations"
 
 
 
+ALTER TABLE ONLY "public"."practice_scenario_change_events"
+    ADD CONSTRAINT "practice_scenario_change_events_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."practice_scenarios"
     ADD CONSTRAINT "practice_scenarios_pkey" PRIMARY KEY ("id");
 
@@ -3130,6 +3277,14 @@ CREATE INDEX "practice_evaluations_learner_message_id_idx" ON "public"."practice
 
 
 
+CREATE INDEX "practice_scenario_change_events_org_created_idx" ON "public"."practice_scenario_change_events" USING "btree" ("org_id", "created_at" DESC);
+
+
+
+CREATE INDEX "practice_scenario_change_events_scenario_created_idx" ON "public"."practice_scenario_change_events" USING "btree" ("scenario_id", "created_at" DESC);
+
+
+
 CREATE INDEX "practice_scenarios_local_id_idx" ON "public"."practice_scenarios" USING "btree" ("local_id");
 
 
@@ -3247,6 +3402,10 @@ CREATE OR REPLACE TRIGGER "trg_practice_attempts_prevent_update" BEFORE DELETE O
 
 
 CREATE OR REPLACE TRIGGER "trg_practice_evaluations_prevent_update" BEFORE DELETE OR UPDATE ON "public"."practice_evaluations" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_practice_scenario_change_events_prevent_update" BEFORE DELETE OR UPDATE ON "public"."practice_scenario_change_events" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
 
 
 
@@ -3540,6 +3699,11 @@ ALTER TABLE ONLY "public"."practice_evaluations"
 
 ALTER TABLE ONLY "public"."practice_evaluations"
     ADD CONSTRAINT "practice_evaluations_learner_message_id_fkey" FOREIGN KEY ("learner_message_id") REFERENCES "public"."conversation_messages"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."practice_scenario_change_events"
+    ADD CONSTRAINT "practice_scenario_change_events_scenario_id_fkey" FOREIGN KEY ("scenario_id") REFERENCES "public"."practice_scenarios"("id") ON DELETE RESTRICT;
 
 
 
@@ -4199,6 +4363,29 @@ CREATE POLICY "practice_evaluations_select_superadmin" ON "public"."practice_eva
 
 
 
+ALTER TABLE "public"."practice_scenario_change_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "practice_scenario_change_events_insert_admin_org" ON "public"."practice_scenario_change_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL) AND ("actor_user_id" = "auth"."uid"())));
+
+
+
+CREATE POLICY "practice_scenario_change_events_insert_superadmin" ON "public"."practice_scenario_change_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'superadmin'::"public"."app_role") AND ("actor_user_id" = "auth"."uid"())));
+
+
+
+CREATE POLICY "practice_scenario_change_events_select_admin_org" ON "public"."practice_scenario_change_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
+
+
+
+CREATE POLICY "practice_scenario_change_events_select_referente" ON "public"."practice_scenario_change_events" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
+
+
+
+CREATE POLICY "practice_scenario_change_events_select_superadmin" ON "public"."practice_scenario_change_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
 ALTER TABLE "public"."practice_scenarios" ENABLE ROW LEVEL SECURITY;
 
 
@@ -4221,6 +4408,14 @@ CREATE POLICY "practice_scenarios_select_local_roles" ON "public"."practice_scen
 
 
 CREATE POLICY "practice_scenarios_select_superadmin" ON "public"."practice_scenarios" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
+CREATE POLICY "practice_scenarios_update_admin_org" ON "public"."practice_scenarios" FOR UPDATE USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL))) WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL)));
+
+
+
+CREATE POLICY "practice_scenarios_update_superadmin" ON "public"."practice_scenarios" FOR UPDATE USING (("public"."current_role"() = 'superadmin'::"public"."app_role")) WITH CHECK (("public"."current_role"() = 'superadmin'::"public"."app_role"));
 
 
 
@@ -4347,6 +4542,12 @@ GRANT ALL ON FUNCTION "public"."current_user_id"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid", "p_reason" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") TO "service_role";
 
 
 
@@ -4537,6 +4738,12 @@ GRANT ALL ON TABLE "public"."practice_attempts" TO "service_role";
 GRANT ALL ON TABLE "public"."practice_evaluations" TO "anon";
 GRANT ALL ON TABLE "public"."practice_evaluations" TO "authenticated";
 GRANT ALL ON TABLE "public"."practice_evaluations" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."practice_scenario_change_events" TO "anon";
+GRANT ALL ON TABLE "public"."practice_scenario_change_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."practice_scenario_change_events" TO "service_role";
 
 
 

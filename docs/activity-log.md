@@ -1517,3 +1517,18 @@ Se agrega RPC create-only para practice_scenarios con validaciones de programa y
 - Qué cambia: nuevo RPC y policies INSERT en practice_scenarios
 - Qué NO cambia: no agrega auditoria ni UI, no permite updates/deletes
 - Próximos pasos sugeridos: definir auditoria append-only de creacion (Sub-lote 3.1 si aplica)
+
+## 2026-01-28 — Post-MVP6 Sub-lote 3.1: disable practice_scenarios + audit events
+
+**Tipo:** feature  
+**Alcance:** db | docs
+
+**Resumen**
+Se agrega is_enabled en practice_scenarios, RPC disable_practice_scenario y tabla audit append-only practice_scenario_change_events. La RPC create_practice_scenario emite evento created, y las views de config filtran solo escenarios habilitados.
+
+**Impacto**
+
+- Qué habilita: deshabilitar escenarios sin borrar y auditar cambios
+- Qué cambia: nuevos eventos y policies UPDATE/SELECT controladas
+- Qué NO cambia: no agrega UI ni re-enable RPC
+- Próximos pasos sugeridos: decidir si se agrega re-enable (event_type existe)

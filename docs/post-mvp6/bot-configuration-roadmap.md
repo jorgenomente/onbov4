@@ -262,6 +262,37 @@ Formato estricto (ya usado en practica y evaluacion final):
 
 ---
 
+### Sub-lote 3.1 - Disable practice_scenarios + auditoria (append-only)
+
+**Objetivo**: completar write seguro con disable soft + auditoria append-only.
+
+**Entregables**
+
+- Columna `practice_scenarios.is_enabled` (default true).
+- Tabla `practice_scenario_change_events` (append-only) con eventos created/disabled.
+- RPC `disable_practice_scenario` con validaciones de rol y scope.
+- Views de config del bot filtradas por `is_enabled=true`.
+
+**Estado**: Hecho (2026-01-28)
+
+**Implementado**
+
+- `is_enabled` en practice_scenarios + policies UPDATE para admin_org/superadmin.
+- Auditoria append-only (sin UPDATE/DELETE) con RLS: superadmin/org/referente; aprendiz bloqueado.
+- create_practice_scenario emite evento `created`; disable_practice_scenario emite `disabled`.
+
+**Riesgos**
+
+- Sin auditoria de re-enable (event_type existe, RPC no implementado).
+
+**QA / smoke (SQL)**
+
+- Admin Org: create + disable OK (solo ORG-level).
+- Referente/aprendiz: disable bloqueado.
+- Superadmin: disable local-level OK.
+
+---
+
 ### Sub-lote 4 - UI minima (si aplica)
 
 **Objetivo**: exponer la configuracion anadida con UI minimalista.

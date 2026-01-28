@@ -191,6 +191,14 @@
 | practice_evaluations                                  | feedback                                | text                     | true     |                                    |
 | practice_evaluations                                  | doubt_signals                           | ARRAY                    | true     | '{}'::text[]                       |
 | practice_evaluations                                  | created_at                              | timestamp with time zone | true     | now()                              |
+| practice_scenario_change_events                       | id                                      | uuid                     | true     | gen_random_uuid()                  |
+| practice_scenario_change_events                       | org_id                                  | uuid                     | true     |                                    |
+| practice_scenario_change_events                       | local_id                                | uuid                     | false    |                                    |
+| practice_scenario_change_events                       | scenario_id                             | uuid                     | true     |                                    |
+| practice_scenario_change_events                       | actor_user_id                           | uuid                     | false    |                                    |
+| practice_scenario_change_events                       | event_type                              | text                     | true     |                                    |
+| practice_scenario_change_events                       | payload                                 | jsonb                    | true     | '{}'::jsonb                        |
+| practice_scenario_change_events                       | created_at                              | timestamp with time zone | true     | now()                              |
 | practice_scenarios                                    | id                                      | uuid                     | true     | gen_random_uuid()                  |
 | practice_scenarios                                    | org_id                                  | uuid                     | true     |                                    |
 | practice_scenarios                                    | local_id                                | uuid                     | false    |                                    |
@@ -201,6 +209,7 @@
 | practice_scenarios                                    | instructions                            | text                     | true     |                                    |
 | practice_scenarios                                    | success_criteria                        | ARRAY                    | true     | '{}'::text[]                       |
 | practice_scenarios                                    | created_at                              | timestamp with time zone | true     | now()                              |
+| practice_scenarios                                    | is_enabled                              | boolean                  | true     | true                               |
 | profiles                                              | user_id                                 | uuid                     | true     |                                    |
 | profiles                                              | org_id                                  | uuid                     | true     |                                    |
 | profiles                                              | local_id                                | uuid                     | true     |                                    |
@@ -926,19 +935,33 @@
 | WHERE ((pa.id = practice_evaluations.attempt_id) AND (pa.local_id = current_local_id()))))) |         |                                                                    |            |
 | practice_evaluations_select_superadmin                                                      | SELECT  | ("current_role"() = 'superadmin'::app_role)                        |            |
 
+### practice_scenario_change_events
+
+- RLS: enabled
+
+| policy_name                                       | command | using                                                                                                                                | with_check |
+| ------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| practice_scenario_change_events_insert_admin_org  | INSERT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()) AND (local_id IS NULL) AND (actor_user_id = auth.uid())) |            |
+| practice_scenario_change_events_insert_superadmin | INSERT  | (("current_role"() = 'superadmin'::app_role) AND (actor_user_id = auth.uid()))                                                       |            |
+| practice_scenario_change_events_select_admin_org  | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                         |            |
+| practice_scenario_change_events_select_referente  | SELECT  | (("current_role"() = 'referente'::app_role) AND (local_id = current_local_id()))                                                     |            |
+| practice_scenario_change_events_select_superadmin | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                          |            |
+
 ### practice_scenarios
 
 - RLS: enabled
 
-| policy_name                                                                                                     | command | using                                                                                                                                                                       | with_check |
-| --------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| practice_scenarios_insert_admin_org                                                                             | INSERT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()) AND (local_id IS NULL) AND (EXISTS ( SELECT 1                                                   |            |
-| FROM training_programs tp                                                                                       |         |                                                                                                                                                                             |            |
-| WHERE ((tp.id = practice_scenarios.program_id) AND (tp.org_id = current_org_id()) AND (tp.local_id IS NULL))))) |         |                                                                                                                                                                             |            |
-| practice_scenarios_insert_superadmin                                                                            | INSERT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
-| practice_scenarios_select_admin_org                                                                             | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                |            |
-| practice_scenarios_select_local_roles                                                                           | SELECT  | (("current_role"() = ANY (ARRAY['referente'::app_role, 'aprendiz'::app_role])) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (local_id = current_local_id()))) |            |
-| practice_scenarios_select_superadmin                                                                            | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
+| policy_name                                                                                                     | command | using                                                                                                                                                                       | with_check                                                                                          |
+| --------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| practice_scenarios_insert_admin_org                                                                             | INSERT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()) AND (local_id IS NULL) AND (EXISTS ( SELECT 1                                                   |                                                                                                     |
+| FROM training_programs tp                                                                                       |         |                                                                                                                                                                             |                                                                                                     |
+| WHERE ((tp.id = practice_scenarios.program_id) AND (tp.org_id = current_org_id()) AND (tp.local_id IS NULL))))) |         |                                                                                                                                                                             |                                                                                                     |
+| practice_scenarios_insert_superadmin                                                                            | INSERT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |                                                                                                     |
+| practice_scenarios_select_admin_org                                                                             | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                |                                                                                                     |
+| practice_scenarios_select_local_roles                                                                           | SELECT  | (("current_role"() = ANY (ARRAY['referente'::app_role, 'aprendiz'::app_role])) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (local_id = current_local_id()))) |                                                                                                     |
+| practice_scenarios_select_superadmin                                                                            | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |                                                                                                     |
+| practice_scenarios_update_admin_org                                                                             | UPDATE  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()) AND (local_id IS NULL))                                                                         | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()) AND (local_id IS NULL)) |
+| practice_scenarios_update_superadmin                                                                            | UPDATE  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 | ("current_role"() = 'superadmin'::app_role)                                                         |
 
 ### profiles
 
