@@ -1487,3 +1487,18 @@ Se agrega un enum de tipologia pedagogica y una columna opcional `content_type` 
 - Qué cambia: schema del knowledge con campo opcional
 - Qué NO cambia: no modifica UI, RLS ni comportamiento del bot
 - Próximos pasos sugeridos: definir si se requiere UI/RPC para gestionar `content_type`
+
+## 2026-01-28 — Post-MVP6 Sub-lote 2: views config del bot (read-only)
+
+**Tipo:** feature  
+**Alcance:** db | docs
+
+**Resumen**
+Se agregan views read-only para lectura operativa de configuracion del bot por local y por unidad del programa activo, mas un view de gaps deterministas.
+
+**Impacto**
+
+- Qué habilita: visibilidad tenant-scoped de programa activo, config final vigente, coverage knowledge y escenarios
+- Qué cambia: agrega contratos de lectura sin tocar UI
+- Qué NO cambia: no modifica RLS, ni writes, ni prompts
+- Próximos pasos sugeridos: evaluar si se expone UI o se agrega RPCs para completar gaps

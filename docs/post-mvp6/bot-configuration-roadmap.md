@@ -216,6 +216,14 @@ Formato estricto (ya usado en practica y evaluacion final):
 - View resumen (si se necesita): active program + config vigente + coverage.
 - Extender vistas actuales si faltan campos de comportamiento.
 
+**Estado**: Hecho (2026-01-28)
+
+**Implementado**
+
+- `v_local_bot_config_summary`: resumen por local (programa activo, config final vigente, coverage knowledge, escenarios).
+- `v_local_bot_config_units`: detalle por unidad del programa activo (knowledge por tipo, escenarios).
+- `v_local_bot_config_gaps`: huecos deterministas (sin knowledge / sin practica).
+
 **Riesgos**
 
 - Duplicar vistas ya existentes (debe evitarse).

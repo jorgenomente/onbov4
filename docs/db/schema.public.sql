@@ -56,6 +56,21 @@ CREATE TYPE "public"."decision_type_v2" AS ENUM (
 ALTER TYPE "public"."decision_type_v2" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."knowledge_content_type" AS ENUM (
+    'concepto',
+    'procedimiento',
+    'regla',
+    'guion'
+);
+
+
+ALTER TYPE "public"."knowledge_content_type" OWNER TO "postgres";
+
+
+COMMENT ON TYPE "public"."knowledge_content_type" IS 'Post-MVP6: tipologia pedagogica minima para knowledge_items (opcional).';
+
+
+
 CREATE TYPE "public"."learner_status" AS ENUM (
     'en_entrenamiento',
     'en_practica',
@@ -980,11 +995,16 @@ CREATE TABLE IF NOT EXISTS "public"."knowledge_items" (
     "title" "text" NOT NULL,
     "content" "text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "content_type" "public"."knowledge_content_type",
     "is_enabled" boolean DEFAULT true NOT NULL
 );
 
 
 ALTER TABLE "public"."knowledge_items" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."knowledge_items"."content_type" IS 'Post-MVP6: tipo pedagogico opcional (concepto/procedimiento/regla/guion). NULL permitido para compatibilidad retroactiva.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."learner_future_questions" (
@@ -1520,6 +1540,110 @@ CREATE OR REPLACE VIEW "public"."v_learner_wrong_answers" AS
 
 
 ALTER VIEW "public"."v_learner_wrong_answers" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."v_local_bot_config_units" WITH ("security_barrier"='true') AS
+ SELECT "lap"."local_id",
+    "tp"."id" AS "program_id",
+    "tu"."unit_order",
+    "tu"."title" AS "unit_title",
+    (COALESCE("knowledge"."knowledge_count", (0)::bigint))::integer AS "knowledge_count",
+    "knowledge"."knowledge_count_by_type",
+    (COALESCE("practice"."practice_scenarios_count", (0)::bigint))::integer AS "practice_scenarios_count",
+    "practice"."practice_difficulty_min",
+    "practice"."practice_difficulty_max",
+    (COALESCE("practice"."success_criteria_count_total", (0)::bigint))::integer AS "success_criteria_count_total"
+   FROM (((("public"."local_active_programs" "lap"
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "lap"."program_id")))
+     JOIN "public"."training_units" "tu" ON (("tu"."program_id" = "tp"."id")))
+     LEFT JOIN LATERAL ( SELECT "count"(*) AS "knowledge_count",
+            "jsonb_build_object"('concepto', "count"(*) FILTER (WHERE ("ki"."content_type" = 'concepto'::"public"."knowledge_content_type")), 'procedimiento', "count"(*) FILTER (WHERE ("ki"."content_type" = 'procedimiento'::"public"."knowledge_content_type")), 'regla', "count"(*) FILTER (WHERE ("ki"."content_type" = 'regla'::"public"."knowledge_content_type")), 'guion', "count"(*) FILTER (WHERE ("ki"."content_type" = 'guion'::"public"."knowledge_content_type")), 'sin_tipo', "count"(*) FILTER (WHERE ("ki"."content_type" IS NULL))) AS "knowledge_count_by_type"
+           FROM ("public"."unit_knowledge_map" "ukm"
+             JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
+          WHERE (("ukm"."unit_id" = "tu"."id") AND ("ki"."is_enabled" = true) AND (("ki"."local_id" IS NULL) OR ("ki"."local_id" = "lap"."local_id")))) "knowledge" ON (true))
+     LEFT JOIN LATERAL ( SELECT "count"(*) AS "practice_scenarios_count",
+            "min"("ps"."difficulty") AS "practice_difficulty_min",
+            "max"("ps"."difficulty") AS "practice_difficulty_max",
+            "sum"(COALESCE("array_length"("ps"."success_criteria", 1), 0)) AS "success_criteria_count_total"
+           FROM "public"."practice_scenarios" "ps"
+          WHERE (("ps"."program_id" = "tp"."id") AND ("ps"."unit_order" = "tu"."unit_order") AND (("ps"."local_id" IS NULL) OR ("ps"."local_id" = "lap"."local_id")))) "practice" ON (true));
+
+
+ALTER VIEW "public"."v_local_bot_config_units" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_local_bot_config_units" IS 'Post-MVP6 S2: Detalle por unidad del programa activo (knowledge por tipo, escenarios de practica). Read-only; tenant-scoped por RLS de tablas base.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_local_bot_config_gaps" WITH ("security_barrier"='true') AS
+ SELECT "local_id",
+    "program_id",
+    "unit_order",
+    "unit_title",
+    ("knowledge_count" = 0) AS "is_missing_knowledge",
+    ("practice_scenarios_count" = 0) AS "is_missing_practice"
+   FROM "public"."v_local_bot_config_units" "u";
+
+
+ALTER VIEW "public"."v_local_bot_config_gaps" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_local_bot_config_gaps" IS 'Post-MVP6 S2: Huecos deterministas del programa activo por local (sin knowledge o sin practica). Read-only; tenant-scoped por RLS de tablas base.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_local_bot_config_summary" WITH ("security_barrier"='true') AS
+ SELECT "lap"."local_id",
+    "l"."org_id",
+    "tp"."id" AS "active_program_id",
+    "tp"."name" AS "active_program_name",
+    (COALESCE("units"."total_units", (0)::bigint))::integer AS "total_units",
+    "fec"."config_id" AS "current_final_eval_config_id",
+    "fec"."total_questions" AS "final_eval_total_questions",
+    "fec"."roleplay_ratio",
+    "fec"."min_global_score",
+    "fec"."must_pass_units",
+    "fec"."questions_per_unit",
+    "fec"."max_attempts",
+    "fec"."cooldown_hours",
+    (COALESCE("knowledge"."total_knowledge_items", (0)::bigint))::integer AS "total_knowledge_items_active_program",
+    (COALESCE("practice"."total_practice_scenarios", (0)::bigint))::integer AS "total_practice_scenarios_active_program",
+    "knowledge"."knowledge_count_by_type"
+   FROM (((((("public"."local_active_programs" "lap"
+     JOIN "public"."locals" "l" ON (("l"."id" = "lap"."local_id")))
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "lap"."program_id")))
+     LEFT JOIN LATERAL ( SELECT "count"(*) AS "total_units"
+           FROM "public"."training_units" "tu"
+          WHERE ("tu"."program_id" = "tp"."id")) "units" ON (true))
+     LEFT JOIN LATERAL ( SELECT "fec_inner"."id" AS "config_id",
+            "fec_inner"."total_questions",
+            "fec_inner"."roleplay_ratio",
+            "fec_inner"."min_global_score",
+            "fec_inner"."must_pass_units",
+            "fec_inner"."questions_per_unit",
+            "fec_inner"."max_attempts",
+            "fec_inner"."cooldown_hours"
+           FROM "public"."final_evaluation_configs" "fec_inner"
+          WHERE ("fec_inner"."program_id" = "tp"."id")
+          ORDER BY "fec_inner"."created_at" DESC
+         LIMIT 1) "fec" ON (true))
+     LEFT JOIN LATERAL ( SELECT "count"(DISTINCT "ki"."id") AS "total_knowledge_items",
+            "jsonb_build_object"('concepto', "count"(DISTINCT "ki"."id") FILTER (WHERE ("ki"."content_type" = 'concepto'::"public"."knowledge_content_type")), 'procedimiento', "count"(DISTINCT "ki"."id") FILTER (WHERE ("ki"."content_type" = 'procedimiento'::"public"."knowledge_content_type")), 'regla', "count"(DISTINCT "ki"."id") FILTER (WHERE ("ki"."content_type" = 'regla'::"public"."knowledge_content_type")), 'guion', "count"(DISTINCT "ki"."id") FILTER (WHERE ("ki"."content_type" = 'guion'::"public"."knowledge_content_type")), 'sin_tipo', "count"(DISTINCT "ki"."id") FILTER (WHERE ("ki"."content_type" IS NULL))) AS "knowledge_count_by_type"
+           FROM (("public"."training_units" "tu"
+             JOIN "public"."unit_knowledge_map" "ukm" ON (("ukm"."unit_id" = "tu"."id")))
+             JOIN "public"."knowledge_items" "ki" ON (("ki"."id" = "ukm"."knowledge_id")))
+          WHERE (("tu"."program_id" = "tp"."id") AND ("ki"."is_enabled" = true) AND (("ki"."local_id" IS NULL) OR ("ki"."local_id" = "lap"."local_id")))) "knowledge" ON (true))
+     LEFT JOIN LATERAL ( SELECT "count"(*) AS "total_practice_scenarios"
+           FROM "public"."practice_scenarios" "ps"
+          WHERE (("ps"."program_id" = "tp"."id") AND (("ps"."local_id" IS NULL) OR ("ps"."local_id" = "lap"."local_id")))) "practice" ON (true));
+
+
+ALTER VIEW "public"."v_local_bot_config_summary" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_local_bot_config_summary" IS 'Post-MVP6 S2: Resumen config del bot por local (programa activo, config final vigente, coverage knowledge y escenarios). Read-only; tenant-scoped por RLS de tablas base.';
+
 
 
 CREATE OR REPLACE VIEW "public"."v_local_learner_risk_30d" AS
@@ -4342,6 +4466,24 @@ GRANT ALL ON TABLE "public"."v_learner_training_home" TO "service_role";
 GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "anon";
 GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_learner_wrong_answers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_local_bot_config_units" TO "anon";
+GRANT ALL ON TABLE "public"."v_local_bot_config_units" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_local_bot_config_units" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_local_bot_config_gaps" TO "anon";
+GRANT ALL ON TABLE "public"."v_local_bot_config_gaps" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_local_bot_config_gaps" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_local_bot_config_summary" TO "anon";
+GRANT ALL ON TABLE "public"."v_local_bot_config_summary" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_local_bot_config_summary" TO "service_role";
 
 
 
