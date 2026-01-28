@@ -88,6 +88,138 @@ CREATE TYPE "public"."recommended_action" AS ENUM (
 ALTER TYPE "public"."recommended_action" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "uuid", "p_unit_id" "uuid", "p_title" "text", "p_content" "text", "p_scope" "text", "p_local_id" "uuid", "p_reason" "text" DEFAULT NULL::"text") RETURNS "uuid"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_role text;
+  v_org_id uuid;
+  v_program_org_id uuid;
+  v_unit_order int;
+  v_title text;
+  v_content text;
+  v_knowledge_id uuid;
+  v_local_id uuid;
+begin
+  v_role := public.current_role();
+  v_org_id := public.current_org_id();
+
+  if v_role not in ('admin_org', 'superadmin') then
+    raise exception 'forbidden: role % cannot create knowledge', v_role
+      using errcode = '42501';
+  end if;
+
+  select tp.org_id into v_program_org_id
+  from public.training_programs tp
+  where tp.id = p_program_id;
+
+  if v_program_org_id is null then
+    raise exception 'not_found: program_id % not in org scope', p_program_id
+      using errcode = '22023';
+  end if;
+  if v_role = 'admin_org' and v_program_org_id <> v_org_id then
+    raise exception 'not_found: program_id % not in org scope', p_program_id
+      using errcode = '22023';
+  end if;
+
+  select tu.unit_order into v_unit_order
+  from public.training_units tu
+  where tu.id = p_unit_id
+    and tu.program_id = p_program_id;
+
+  if v_unit_order is null then
+    raise exception 'not_found: unit_id % not in program', p_unit_id
+      using errcode = '22023';
+  end if;
+
+  v_title := trim(coalesce(p_title, ''));
+  v_content := trim(coalesce(p_content, ''));
+
+  if length(v_title) = 0 or length(v_title) > 120 then
+    raise exception 'invalid: title length must be 1..120'
+      using errcode = '22023';
+  end if;
+
+  if length(v_content) = 0 or length(v_content) > 20000 then
+    raise exception 'invalid: content length must be 1..20000'
+      using errcode = '22023';
+  end if;
+
+  if p_scope = 'org' then
+    if p_local_id is not null then
+      raise exception 'invalid: local_id must be null for org scope'
+        using errcode = '22023';
+    end if;
+    v_local_id := null;
+  elsif p_scope = 'local' then
+    if p_local_id is null then
+      raise exception 'invalid: local_id required for local scope'
+        using errcode = '22023';
+    end if;
+    if not exists (
+      select 1
+      from public.locals l
+      where l.id = p_local_id
+        and l.org_id = v_program_org_id
+    ) then
+      raise exception 'invalid: local_id % not in org', p_local_id
+        using errcode = '22023';
+    end if;
+    v_local_id := p_local_id;
+  else
+    raise exception 'invalid: scope must be org or local'
+      using errcode = '22023';
+  end if;
+
+  insert into public.knowledge_items (
+    org_id,
+    local_id,
+    title,
+    content
+  ) values (
+    v_program_org_id,
+    v_local_id,
+    v_title,
+    v_content
+  ) returning id into v_knowledge_id;
+
+  insert into public.unit_knowledge_map (unit_id, knowledge_id)
+  values (p_unit_id, v_knowledge_id);
+
+  insert into public.knowledge_change_events (
+    org_id,
+    local_id,
+    program_id,
+    unit_id,
+    unit_order,
+    knowledge_id,
+    action,
+    created_by_user_id,
+    title
+  ) values (
+    v_program_org_id,
+    v_local_id,
+    p_program_id,
+    p_unit_id,
+    v_unit_order,
+    v_knowledge_id,
+    'create_and_map',
+    auth.uid(),
+    v_title
+  );
+
+  return v_knowledge_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "uuid", "p_unit_id" "uuid", "p_title" "text", "p_content" "text", "p_scope" "text", "p_local_id" "uuid", "p_reason" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "uuid", "p_unit_id" "uuid", "p_title" "text", "p_content" "text", "p_scope" "text", "p_local_id" "uuid", "p_reason" "text") IS 'Post-MVP4 K2: create knowledge_item + map to unit in one transaction (append-only).';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."create_final_evaluation_config"("p_program_id" "uuid", "p_total_questions" integer, "p_roleplay_ratio" numeric, "p_min_global_score" numeric, "p_must_pass_units" integer[], "p_questions_per_unit" integer, "p_max_attempts" integer, "p_cooldown_hours" integer) RETURNS "uuid"
     LANGUAGE "plpgsql"
     AS $$
@@ -683,6 +815,24 @@ CREATE TABLE IF NOT EXISTS "public"."final_evaluation_questions" (
 
 
 ALTER TABLE "public"."final_evaluation_questions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."knowledge_change_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "local_id" "uuid",
+    "program_id" "uuid" NOT NULL,
+    "unit_id" "uuid" NOT NULL,
+    "unit_order" integer NOT NULL,
+    "knowledge_id" "uuid" NOT NULL,
+    "action" "text" DEFAULT 'create_and_map'::"text" NOT NULL,
+    "created_by_user_id" "uuid" NOT NULL,
+    "title" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."knowledge_change_events" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."knowledge_items" (
@@ -1861,6 +2011,11 @@ ALTER TABLE ONLY "public"."final_evaluation_questions"
 
 
 
+ALTER TABLE ONLY "public"."knowledge_change_events"
+    ADD CONSTRAINT "knowledge_change_events_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."knowledge_items"
     ADD CONSTRAINT "knowledge_items_pkey" PRIMARY KEY ("id");
 
@@ -2056,6 +2211,18 @@ CREATE INDEX "final_evaluation_questions_attempt_id_idx" ON "public"."final_eval
 
 
 CREATE INDEX "final_evaluation_questions_unit_order_idx" ON "public"."final_evaluation_questions" USING "btree" ("unit_order");
+
+
+
+CREATE INDEX "knowledge_change_events_created_at_idx" ON "public"."knowledge_change_events" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "knowledge_change_events_program_id_idx" ON "public"."knowledge_change_events" USING "btree" ("program_id");
+
+
+
+CREATE INDEX "knowledge_change_events_unit_id_idx" ON "public"."knowledge_change_events" USING "btree" ("unit_id");
 
 
 
@@ -2271,6 +2438,10 @@ CREATE OR REPLACE TRIGGER "trg_final_evaluation_questions_prevent_update" BEFORE
 
 
 
+CREATE OR REPLACE TRIGGER "trg_knowledge_change_events_prevent_update" BEFORE DELETE OR UPDATE ON "public"."knowledge_change_events" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_learner_review_decisions_prevent_update" BEFORE DELETE OR UPDATE ON "public"."learner_review_decisions" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
 
 
@@ -2378,6 +2549,36 @@ ALTER TABLE ONLY "public"."final_evaluation_evaluations"
 
 ALTER TABLE ONLY "public"."final_evaluation_questions"
     ADD CONSTRAINT "final_evaluation_questions_attempt_id_fkey" FOREIGN KEY ("attempt_id") REFERENCES "public"."final_evaluation_attempts"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."knowledge_change_events"
+    ADD CONSTRAINT "knowledge_change_events_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."profiles"("user_id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."knowledge_change_events"
+    ADD CONSTRAINT "knowledge_change_events_knowledge_id_fkey" FOREIGN KEY ("knowledge_id") REFERENCES "public"."knowledge_items"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."knowledge_change_events"
+    ADD CONSTRAINT "knowledge_change_events_local_id_fkey" FOREIGN KEY ("local_id") REFERENCES "public"."locals"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."knowledge_change_events"
+    ADD CONSTRAINT "knowledge_change_events_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."knowledge_change_events"
+    ADD CONSTRAINT "knowledge_change_events_program_id_fkey" FOREIGN KEY ("program_id") REFERENCES "public"."training_programs"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."knowledge_change_events"
+    ADD CONSTRAINT "knowledge_change_events_unit_id_fkey" FOREIGN KEY ("unit_id") REFERENCES "public"."training_units"("id") ON DELETE RESTRICT;
 
 
 
@@ -2833,7 +3034,28 @@ CREATE POLICY "final_evaluation_questions_select_visible" ON "public"."final_eva
 
 
 
+ALTER TABLE "public"."knowledge_change_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "knowledge_change_events_insert_admin_org" ON "public"."knowledge_change_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()))));
+
+
+
+CREATE POLICY "knowledge_change_events_select_admin_org" ON "public"."knowledge_change_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
+
+
+
+CREATE POLICY "knowledge_change_events_select_superadmin" ON "public"."knowledge_change_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
 ALTER TABLE "public"."knowledge_items" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "knowledge_items_insert_admin_org" ON "public"."knowledge_items" FOR INSERT WITH CHECK ((("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR (EXISTS ( SELECT 1
+   FROM "public"."locals" "l"
+  WHERE (("l"."id" = "knowledge_items"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))))));
+
 
 
 CREATE POLICY "knowledge_items_select_admin_org" ON "public"."knowledge_items" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
@@ -3260,6 +3482,15 @@ CREATE POLICY "training_units_select_visible_programs" ON "public"."training_uni
 ALTER TABLE "public"."unit_knowledge_map" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "unit_knowledge_map_insert_admin_org" ON "public"."unit_knowledge_map" FOR INSERT WITH CHECK ((("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+   FROM ("public"."training_units" "tu"
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "tu"."program_id")))
+  WHERE (("tu"."id" = "unit_knowledge_map"."unit_id") AND ("tp"."org_id" = "public"."current_org_id"())))) AND (EXISTS ( SELECT 1
+   FROM "public"."knowledge_items" "ki"
+  WHERE (("ki"."id" = "unit_knowledge_map"."knowledge_id") AND ("ki"."org_id" = "public"."current_org_id"())))))));
+
+
+
 CREATE POLICY "unit_knowledge_map_select_visible" ON "public"."unit_knowledge_map" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM "public"."knowledge_items" "ki"
   WHERE ("ki"."id" = "unit_knowledge_map"."knowledge_id"))));
@@ -3270,6 +3501,12 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "uuid", "p_unit_id" "uuid", "p_title" "text", "p_content" "text", "p_scope" "text", "p_local_id" "uuid", "p_reason" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "uuid", "p_unit_id" "uuid", "p_title" "text", "p_content" "text", "p_scope" "text", "p_local_id" "uuid", "p_reason" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "uuid", "p_unit_id" "uuid", "p_title" "text", "p_content" "text", "p_scope" "text", "p_local_id" "uuid", "p_reason" "text") TO "service_role";
 
 
 
@@ -3401,6 +3638,12 @@ GRANT ALL ON TABLE "public"."final_evaluation_evaluations" TO "service_role";
 GRANT ALL ON TABLE "public"."final_evaluation_questions" TO "anon";
 GRANT ALL ON TABLE "public"."final_evaluation_questions" TO "authenticated";
 GRANT ALL ON TABLE "public"."final_evaluation_questions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."knowledge_change_events" TO "anon";
+GRANT ALL ON TABLE "public"."knowledge_change_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."knowledge_change_events" TO "service_role";
 
 
 

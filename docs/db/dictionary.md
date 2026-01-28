@@ -73,6 +73,17 @@
 | final_evaluation_questions              | question_type               | text                     | true     |                                    |
 | final_evaluation_questions              | prompt                      | text                     | true     |                                    |
 | final_evaluation_questions              | created_at                  | timestamp with time zone | true     | now()                              |
+| knowledge_change_events                 | id                          | uuid                     | true     | gen_random_uuid()                  |
+| knowledge_change_events                 | org_id                      | uuid                     | true     |                                    |
+| knowledge_change_events                 | local_id                    | uuid                     | false    |                                    |
+| knowledge_change_events                 | program_id                  | uuid                     | true     |                                    |
+| knowledge_change_events                 | unit_id                     | uuid                     | true     |                                    |
+| knowledge_change_events                 | unit_order                  | integer                  | true     |                                    |
+| knowledge_change_events                 | knowledge_id                | uuid                     | true     |                                    |
+| knowledge_change_events                 | action                      | text                     | true     | 'create_and_map'::text             |
+| knowledge_change_events                 | created_by_user_id          | uuid                     | true     |                                    |
+| knowledge_change_events                 | title                       | text                     | true     |                                    |
+| knowledge_change_events                 | created_at                  | timestamp with time zone | true     | now()                              |
 | knowledge_items                         | id                          | uuid                     | true     | gen_random_uuid()                  |
 | knowledge_items                         | org_id                      | uuid                     | true     |                                    |
 | knowledge_items                         | local_id                    | uuid                     | false    |                                    |
@@ -543,15 +554,28 @@
 | JOIN locals l ON ((l.id = lt.local_id)))                                                                                                                                                                     |         |                    |            |
 | WHERE ((lt.learner_id = a.learner_id) AND (lt.program_id = a.program_id) AND (l.org_id = current_org_id()))))) OR ("current_role"() = 'superadmin'::app_role)))))                                            |         |                    |            |
 
+### knowledge_change_events
+
+- RLS: enabled
+
+| policy_name                               | command | using                                                                                                                         | with_check |
+| ----------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| knowledge_change_events_insert_admin_org  | INSERT  | (("current_role"() = 'superadmin'::app_role) OR (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))) |            |
+| knowledge_change_events_select_admin_org  | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                  |            |
+| knowledge_change_events_select_superadmin | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                   |            |
+
 ### knowledge_items
 
 - RLS: enabled
 
-| policy_name                        | command | using                                                                                                                                                                       | with_check |
-| ---------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| knowledge_items_select_admin_org   | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                |            |
-| knowledge_items_select_local_roles | SELECT  | (("current_role"() = ANY (ARRAY['referente'::app_role, 'aprendiz'::app_role])) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (local_id = current_local_id()))) |            |
-| knowledge_items_select_superadmin  | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
+| policy_name                                                                      | command | using                                                                                                                                                                       | with_check |
+| -------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| knowledge_items_insert_admin_org                                                 | INSERT  | (("current_role"() = 'superadmin'::app_role) OR (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (EXISTS ( SELECT 1   |            |
+| FROM locals l                                                                    |         |                                                                                                                                                                             |            |
+| WHERE ((l.id = knowledge_items.local_id) AND (l.org_id = current_org_id()))))))) |         |                                                                                                                                                                             |            |
+| knowledge_items_select_admin_org                                                 | SELECT  | (("current_role"() = 'admin_org'::app_role) AND (org_id = current_org_id()))                                                                                                |            |
+| knowledge_items_select_local_roles                                               | SELECT  | (("current_role"() = ANY (ARRAY['referente'::app_role, 'aprendiz'::app_role])) AND (org_id = current_org_id()) AND ((local_id IS NULL) OR (local_id = current_local_id()))) |            |
+| knowledge_items_select_superadmin                                                | SELECT  | ("current_role"() = 'superadmin'::app_role)                                                                                                                                 |            |
 
 ### learner_future_questions
 
@@ -821,8 +845,14 @@
 
 - RLS: enabled
 
-| policy_name                                       | command | using              | with_check |
-| ------------------------------------------------- | ------- | ------------------ | ---------- |
-| unit_knowledge_map_select_visible                 | SELECT  | (EXISTS ( SELECT 1 |            |
-| FROM knowledge_items ki                           |         |                    |            |
-| WHERE (ki.id = unit_knowledge_map.knowledge_id))) |         |                    |            |
+| policy_name                                                                                              | command | using                                                                                                              | with_check |
+| -------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ | ---------- |
+| unit_knowledge_map_insert_admin_org                                                                      | INSERT  | (("current_role"() = 'superadmin'::app_role) OR (("current_role"() = 'admin_org'::app_role) AND (EXISTS ( SELECT 1 |            |
+| FROM (training_units tu                                                                                  |         |                                                                                                                    |            |
+| JOIN training_programs tp ON ((tp.id = tu.program_id)))                                                  |         |                                                                                                                    |            |
+| WHERE ((tu.id = unit_knowledge_map.unit_id) AND (tp.org_id = current_org_id())))) AND (EXISTS ( SELECT 1 |         |                                                                                                                    |            |
+| FROM knowledge_items ki                                                                                  |         |                                                                                                                    |            |
+| WHERE ((ki.id = unit_knowledge_map.knowledge_id) AND (ki.org_id = current_org_id()))))))                 |         |                                                                                                                    |            |
+| unit_knowledge_map_select_visible                                                                        | SELECT  | (EXISTS ( SELECT 1                                                                                                 |            |
+| FROM knowledge_items ki                                                                                  |         |                                                                                                                    |            |
+| WHERE (ki.id = unit_knowledge_map.knowledge_id)))                                                        |         |                                                                                                                    |            |

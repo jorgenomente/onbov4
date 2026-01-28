@@ -1331,3 +1331,17 @@ Se agregan views read-only para cobertura de knowledge por unidad y gaps por pro
 - Visibilidad operativa de gaps que rompen el bot
 - Sin writes ni cambios de engine
 - Lectura multi-tenant via RLS
+
+## 2026-01-28 — Post-MVP4 K2: add knowledge wizard (RPC + audit)
+
+**Tipo:** feature  
+**Alcance:** db | rls | backend | frontend | ux
+
+**Resumen**
+Se agrega RPC create_and_map_knowledge_item con auditoría append-only y políticas RLS de insert para knowledge_items y unit_knowledge_map. Se integra wizard en /org/config/knowledge-coverage para crear knowledge y mapearlo a una unidad.
+
+**Impacto**
+
+- Admin Org puede cargar knowledge sin SQL
+- Coverage/list K1 reflejan el nuevo item
+- Append-only preservado sin CRUD libre

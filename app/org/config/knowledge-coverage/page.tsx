@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { requireUserAndRole } from '../../../../lib/server/requireRole';
 import { getSupabaseServerClient } from '../../../../lib/server/supabase';
+import { addKnowledgeToUnitAction } from './actions';
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -56,6 +57,9 @@ export default async function KnowledgeCoveragePage({
 
   const sp = await searchParams;
   const programId = coerceParam(sp?.programId) ?? '';
+  const success = coerceParam(sp?.success);
+  const error = coerceParam(sp?.error);
+  const knowledgeId = coerceParam(sp?.knowledgeId);
 
   const supabase = await getSupabaseServerClient();
 
@@ -75,6 +79,21 @@ export default async function KnowledgeCoveragePage({
         )
         .eq('program_id', programId)
         .maybeSingle()
+    : { data: null, error: null };
+
+  const { data: units, error: unitsError } = programSelected
+    ? await supabase
+        .from('training_units')
+        .select('id, unit_order, title')
+        .eq('program_id', programId)
+        .order('unit_order', { ascending: true })
+    : { data: null, error: null };
+
+  const { data: locals, error: localsError } = programSelected
+    ? await supabase
+        .from('locals')
+        .select('id, name')
+        .order('name', { ascending: true })
     : { data: null, error: null };
 
   const { data: coverage, error: coverageError } = programSelected
@@ -124,6 +143,18 @@ export default async function KnowledgeCoveragePage({
       {programsError ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Error al cargar programas.
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {decodeURIComponent(error)}
+        </div>
+      ) : null}
+
+      {success === '1' ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          Knowledge agregado. ID: {knowledgeId ?? '—'}
         </div>
       ) : null}
 
@@ -227,6 +258,117 @@ export default async function KnowledgeCoveragePage({
               learners.
             </p>
           </article>
+        </section>
+      ) : null}
+
+      {programSelected ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-base font-semibold text-slate-800">
+              Agregar knowledge a unidad
+            </h2>
+            <p className="text-xs text-slate-500">
+              Esto crea un item nuevo (append-only) y lo mapea a una unidad. No
+              edita items existentes.
+            </p>
+          </div>
+
+          {(unitsError || localsError) && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              Error al cargar unidades o locales.
+            </div>
+          )}
+
+          <form
+            action={addKnowledgeToUnitAction}
+            className="mt-4 flex flex-col gap-4"
+          >
+            <input type="hidden" name="program_id" value={programId} />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs text-slate-500">Unidad</span>
+                <select
+                  name="unit_id"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="">Seleccionar unidad</option>
+                  {(units ?? []).map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      Unidad {unit.unit_order} · {unit.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs text-slate-500">Scope</span>
+                <select
+                  name="scope"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="org">Compartido (Organización)</option>
+                  <option value="local">Específico (Local)</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs text-slate-500">
+                  Local (solo si scope=local)
+                </span>
+                <select
+                  name="local_id"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">—</option>
+                  {(locals ?? []).map((local) => (
+                    <option key={local.id} value={local.id}>
+                      {local.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs text-slate-500">Título</span>
+                <input
+                  type="text"
+                  name="title"
+                  maxLength={120}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  required
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs text-slate-500">Contenido</span>
+              <textarea
+                name="content"
+                rows={5}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                required
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs text-slate-500">Motivo (opcional)</span>
+              <textarea
+                name="reason"
+                rows={2}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <button
+              type="submit"
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Agregar knowledge
+            </button>
+          </form>
         </section>
       ) : null}
 
