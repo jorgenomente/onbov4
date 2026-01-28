@@ -1359,3 +1359,17 @@ Se agrega is_enabled en knowledge_items con guardrail de update, RPC disable_kno
 - Admin puede desactivar knowledge sin borrar ni editar
 - Coverage/drill-down filtran desactivados
 - Auditoría append-only por mapping
+
+## 2026-01-28 — Post-MVP5 M1: métricas Admin Org (views + UI read-only)
+
+**Tipo:** feature  
+**Alcance:** db | frontend | ux | docs
+
+**Resumen**
+Se agregan views org-scoped de métricas 30 días (gaps, riesgo, cobertura) y pantalla /org/metrics con tabs de lectura para Admin Org.
+
+**Impacto**
+
+- Visibilidad operativa sin writes
+- Drill-down por local en tablas
+- RLS por org/rol

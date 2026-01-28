@@ -1855,6 +1855,26 @@ CREATE OR REPLACE VIEW "public"."v_local_unit_coverage_30d" AS
 ALTER VIEW "public"."v_local_unit_coverage_30d" OWNER TO "postgres";
 
 
+CREATE OR REPLACE VIEW "public"."v_org_learner_risk_30d" WITH ("security_barrier"='true') AS
+ SELECT "l"."org_id",
+    "v"."local_id",
+    "v"."learner_id",
+    "v"."risk_level",
+    ((COALESCE("v"."failed_practice_count", 0) + COALESCE("v"."failed_final_count", 0)) + COALESCE("v"."doubt_signals_count", 0)) AS "risk_score",
+    ((COALESCE("v"."failed_practice_count", 0) + COALESCE("v"."failed_final_count", 0)) + COALESCE("v"."doubt_signals_count", 0)) AS "signals_count_30d",
+    "v"."last_activity_at" AS "last_signal_at"
+   FROM ("public"."v_local_learner_risk_30d" "v"
+     JOIN "public"."locals" "l" ON (("l"."id" = "v"."local_id")))
+  WHERE (("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR ("l"."org_id" = "public"."current_org_id"())));
+
+
+ALTER VIEW "public"."v_org_learner_risk_30d" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_learner_risk_30d" IS 'Post-MVP5 M1: Riesgo por aprendiz (30d) agregado a org. risk_score=failed_practice+failed_final+doubt_signals.';
+
+
+
 CREATE OR REPLACE VIEW "public"."v_org_local_active_programs" WITH ("security_barrier"='true') AS
  SELECT "l"."id" AS "local_id",
     "l"."org_id",
@@ -1986,6 +2006,87 @@ ALTER VIEW "public"."v_org_program_knowledge_gaps_summary" OWNER TO "postgres";
 
 
 COMMENT ON VIEW "public"."v_org_program_knowledge_gaps_summary" IS 'Post-MVP4 K3: Resumen de gaps por programa (unidades, gaps, % gaps, mappings totales).';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_top_gaps_30d" WITH ("security_barrier"='true') AS
+ WITH "org_learners" AS (
+         SELECT "l_1"."org_id",
+            "count"(DISTINCT "lt"."learner_id") AS "learners_count"
+           FROM ("public"."learner_trainings" "lt"
+             JOIN "public"."locals" "l_1" ON (("l_1"."id" = "lt"."local_id")))
+          WHERE ("lt"."updated_at" >= ("now"() - '30 days'::interval))
+          GROUP BY "l_1"."org_id"
+        )
+ SELECT "l"."org_id",
+    "v"."gap" AS "gap_key",
+    NULL::integer AS "unit_order",
+    "v"."gap" AS "title",
+    "sum"("v"."learners_affected") AS "learners_affected_count",
+        CASE
+            WHEN (COALESCE("ol"."learners_count", (0)::bigint) = 0) THEN (0)::numeric
+            ELSE "round"(((("sum"("v"."learners_affected"))::numeric / ("ol"."learners_count")::numeric) * (100)::numeric), 2)
+        END AS "percent_learners_affected",
+    "sum"("v"."count_total") AS "total_fail_events",
+    30 AS "window_days"
+   FROM (("public"."v_local_top_gaps_30d" "v"
+     JOIN "public"."locals" "l" ON (("l"."id" = "v"."local_id")))
+     LEFT JOIN "org_learners" "ol" ON (("ol"."org_id" = "l"."org_id")))
+  WHERE (("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR ("l"."org_id" = "public"."current_org_id"())))
+  GROUP BY "l"."org_id", "v"."gap", "ol"."learners_count"
+  ORDER BY ("sum"("v"."count_total")) DESC;
+
+
+ALTER VIEW "public"."v_org_top_gaps_30d" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_top_gaps_30d" IS 'Post-MVP5 M1: Top gaps por org (ventana 30d). Deriva de v_local_top_gaps_30d; percent_learners_affected usa learners_count en 30d por org.';
+
+
+
+CREATE OR REPLACE VIEW "public"."v_org_unit_coverage_30d" WITH ("security_barrier"='true') AS
+ SELECT "l"."org_id",
+    "v"."local_id",
+    "l"."name" AS "local_name",
+    "v"."program_id",
+    "v"."unit_order",
+        CASE
+            WHEN (("v"."practice_fail_rate" IS NULL) AND ("v"."final_fail_rate" IS NULL)) THEN NULL::numeric
+            ELSE "round"((((1)::numeric - ((COALESCE("v"."practice_fail_rate", (0)::numeric) + COALESCE("v"."final_fail_rate", (0)::numeric)) / (2)::numeric)) * (100)::numeric), 2)
+        END AS "coverage_percent",
+    ( SELECT "count"(DISTINCT "lt"."learner_id") AS "count"
+           FROM "public"."learner_trainings" "lt"
+          WHERE (("lt"."local_id" = "v"."local_id") AND ("lt"."program_id" = "v"."program_id") AND ("lt"."updated_at" >= ("now"() - '30 days'::interval)))) AS "learners_active_count",
+    ( SELECT "count"(DISTINCT "evidence"."learner_id") AS "count"
+           FROM ( SELECT "pa"."learner_id"
+                   FROM ("public"."practice_attempts" "pa"
+                     JOIN "public"."practice_scenarios" "ps" ON (("ps"."id" = "pa"."scenario_id")))
+                  WHERE (("pa"."local_id" = "v"."local_id") AND ("ps"."program_id" = "v"."program_id") AND ("ps"."unit_order" = "v"."unit_order") AND ("pa"."started_at" >= ("now"() - '30 days'::interval)))
+                UNION
+                 SELECT "a"."learner_id"
+                   FROM ((("public"."final_evaluation_evaluations" "ev"
+                     JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."id" = "ev"."answer_id")))
+                     JOIN "public"."final_evaluation_questions" "q" ON (("q"."id" = "ans"."question_id")))
+                     JOIN "public"."final_evaluation_attempts" "a" ON (("a"."id" = "q"."attempt_id")))
+                  WHERE (("a"."program_id" = "v"."program_id") AND ("q"."unit_order" = "v"."unit_order") AND ("ev"."created_at" >= ("now"() - '30 days'::interval)))) "evidence") AS "learners_with_evidence_count",
+    ( SELECT GREATEST(( SELECT "max"("pa"."started_at") AS "max"
+                   FROM ("public"."practice_attempts" "pa"
+                     JOIN "public"."practice_scenarios" "ps" ON (("ps"."id" = "pa"."scenario_id")))
+                  WHERE (("pa"."local_id" = "v"."local_id") AND ("ps"."program_id" = "v"."program_id") AND ("ps"."unit_order" = "v"."unit_order"))), ( SELECT "max"("ev"."created_at") AS "max"
+                   FROM ((("public"."final_evaluation_evaluations" "ev"
+                     JOIN "public"."final_evaluation_answers" "ans" ON (("ans"."id" = "ev"."answer_id")))
+                     JOIN "public"."final_evaluation_questions" "q" ON (("q"."id" = "ans"."question_id")))
+                     JOIN "public"."final_evaluation_attempts" "a" ON (("a"."id" = "q"."attempt_id")))
+                  WHERE (("a"."program_id" = "v"."program_id") AND ("q"."unit_order" = "v"."unit_order")))) AS "greatest") AS "last_activity_at"
+   FROM ("public"."v_local_unit_coverage_30d" "v"
+     JOIN "public"."locals" "l" ON (("l"."id" = "v"."local_id")))
+  WHERE (("public"."current_role"() = ANY (ARRAY['admin_org'::"public"."app_role", 'superadmin'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR ("l"."org_id" = "public"."current_org_id"())));
+
+
+ALTER VIEW "public"."v_org_unit_coverage_30d" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."v_org_unit_coverage_30d" IS 'Post-MVP5 M1: Cobertura por unidad (30d) agregada por org. coverage_percent deriva de fail rates promedio.';
 
 
 
@@ -3987,6 +4088,12 @@ GRANT ALL ON TABLE "public"."v_local_unit_coverage_30d" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."v_org_learner_risk_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_learner_risk_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_learner_risk_30d" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."v_org_local_active_programs" TO "anon";
 GRANT ALL ON TABLE "public"."v_org_local_active_programs" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_org_local_active_programs" TO "service_role";
@@ -4014,6 +4121,18 @@ GRANT ALL ON TABLE "public"."v_org_program_unit_knowledge_coverage" TO "service_
 GRANT ALL ON TABLE "public"."v_org_program_knowledge_gaps_summary" TO "anon";
 GRANT ALL ON TABLE "public"."v_org_program_knowledge_gaps_summary" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_org_program_knowledge_gaps_summary" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_top_gaps_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_top_gaps_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_top_gaps_30d" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "anon";
+GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "authenticated";
+GRANT ALL ON TABLE "public"."v_org_unit_coverage_30d" TO "service_role";
 
 
 
