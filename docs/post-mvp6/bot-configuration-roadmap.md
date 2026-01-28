@@ -190,6 +190,12 @@ Formato estricto (ya usado en practica y evaluacion final):
 - Columna `knowledge_items.content_type` (enum) si se aprueba tipologia.
 - Guardrails append-only si se requiere para nuevas entidades/flags.
 
+**Estado**: Hecho (2026-01-28)
+
+**Implementado**
+
+- Enum `knowledge_content_type` + columna `knowledge_items.content_type` (nullable, sin default).
+
 **Riesgos**
 
 - Cambios de schema sin UI pueden quedar huerfanos.

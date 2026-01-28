@@ -1472,3 +1472,18 @@ Se crea el documento maestro de configuración del bot (contenido, comportamient
 - Qué cambia: claridad sobre qué es configurable hoy vs hardcodeado
 - Qué NO cambia: no modifica DB, RLS ni UI
 - Próximos pasos sugeridos: definir Sub‑lote 1 (cambios mínimos de DB, si aplica)
+
+## 2026-01-28 — Post-MVP6 Sub-lote 1: knowledge_items content_type (DB minimo)
+
+**Tipo:** feature  
+**Alcance:** db | docs
+
+**Resumen**
+Se agrega un enum de tipologia pedagogica y una columna opcional `content_type` en `knowledge_items`, sin defaults ni cambios en UI.
+
+**Impacto**
+
+- Qué habilita: clasificar knowledge para prompts/evaluacion en futuros sub-lotes
+- Qué cambia: schema del knowledge con campo opcional
+- Qué NO cambia: no modifica UI, RLS ni comportamiento del bot
+- Próximos pasos sugeridos: definir si se requiere UI/RPC para gestionar `content_type`
