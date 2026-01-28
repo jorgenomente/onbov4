@@ -1686,3 +1686,17 @@ Se agregan CTAs primarios/secundarios en pantallas clave para evitar callejones 
 - Qué habilita: navegacion consistente entre pantallas por rol
 - Qué cambia: botones y links visibles al inicio de cada pantalla
 - Qué NO cambia: no agrega logica de negocio ni modifica DB
+
+## 2026-01-28 — Fix redirect admin_org hacia /org/metrics
+
+**Tipo:** fix  
+**Alcance:** frontend
+
+**Resumen**
+Se corrige el mapping de admin_org en /auth/redirect para que el landing default sea /org/metrics, según el navigation map.
+
+**Impacto**
+
+- Qué habilita: ingreso correcto de admin org a métricas
+- Qué cambia: defaultPath y allowedPrefixes de admin_org
+- Qué NO cambia: lógica de sesión, queries a profiles ni otros roles

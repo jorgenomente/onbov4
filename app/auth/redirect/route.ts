@@ -20,8 +20,8 @@ const roleConfig: Record<Role, RoleConfig> = {
     allowedPrefixes: ['/referente'],
   },
   admin_org: {
-    defaultPath: '/referente/review',
-    allowedPrefixes: ['/referente', '/org'],
+    defaultPath: '/org/metrics',
+    allowedPrefixes: ['/org'],
   },
   superadmin: {
     defaultPath: '/referente/review',
