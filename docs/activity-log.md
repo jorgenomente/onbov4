@@ -1546,3 +1546,17 @@ Se agrega la pantalla /org/bot-config para Admin Org/Superadmin con lectura de v
 - Qué habilita: operación básica de escenarios de práctica sin SQL manual
 - Qué cambia: nueva ruta y link de acceso desde métricas
 - Qué NO cambia: no toca DB ni agrega features de LMS
+
+## 2026-01-28 — Post-MVP6 S4 fix: admin_org create scenarios en programas local-specific
+
+**Tipo:** fix  
+**Alcance:** db | docs
+
+**Resumen**
+Se ajusta la policy INSERT y la RPC create_practice_scenario para permitir que admin_org cree escenarios ORG-level aunque el programa sea local-specific, manteniendo local_id NULL.
+
+**Impacto**
+
+- Qué habilita: destraba creación de escenarios desde /org/bot-config en programas local-specific
+- Qué cambia: policy de INSERT y validación RPC
+- Qué NO cambia: no habilita escenarios local-level para admin_org

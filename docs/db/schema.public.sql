@@ -349,20 +349,26 @@ declare
   v_org_id uuid;
   v_program_org_id uuid;
   v_program_local_id uuid;
-  v_local_org_id uuid;
-  v_title text;
-  v_instructions text;
+  v_effective_local_id uuid;
   v_difficulty integer;
-  v_scenario_local_id uuid;
 begin
   perform set_config('row_security', 'on', true);
 
   v_role := public.current_role();
-  v_org_id := public.current_org_id();
-
   if v_role not in ('admin_org', 'superadmin') then
     raise exception 'forbidden: role % cannot create practice scenario', v_role
       using errcode = '42501';
+  end if;
+
+  v_org_id := public.current_org_id();
+  if v_org_id is null then
+    raise exception 'missing org context'
+      using errcode = '22023';
+  end if;
+
+  if p_program_id is null then
+    raise exception 'program_id is required'
+      using errcode = '22004';
   end if;
 
   select tp.org_id, tp.local_id
@@ -371,30 +377,16 @@ begin
   where tp.id = p_program_id;
 
   if v_program_org_id is null then
-    raise exception 'not_found: program_id % not found', p_program_id
+    raise exception 'program not found'
       using errcode = '22023';
   end if;
 
-  if v_role = 'admin_org' then
-    if v_program_org_id <> v_org_id then
-      raise exception 'not_found: program_id % not in org scope', p_program_id
-        using errcode = '22023';
-    end if;
-    if v_program_local_id is not null then
-      raise exception 'invalid: program_id % is local-specific and not allowed for admin_org', p_program_id
-        using errcode = '22023';
-    end if;
-    if p_local_id is not null then
-      raise exception 'invalid: local_id must be null for admin_org'
-        using errcode = '22023';
-    end if;
+  if v_program_org_id <> v_org_id and v_role <> 'superadmin' then
+    raise exception 'program does not belong to your org'
+      using errcode = '42501';
   end if;
 
-  if p_unit_order is null or p_unit_order <= 0 then
-    raise exception 'invalid: unit_order must be >= 1'
-      using errcode = '22023';
-  end if;
-
+  -- Validar unit_order existe para el programa
   if not exists (
     select 1
     from public.training_units tu
@@ -405,17 +397,14 @@ begin
       using errcode = '22023';
   end if;
 
-  v_title := trim(coalesce(p_title, ''));
-  v_instructions := trim(coalesce(p_instructions, ''));
-
-  if length(v_title) = 0 then
+  if coalesce(btrim(p_title), '') = '' then
     raise exception 'invalid: title is required'
-      using errcode = '22023';
+      using errcode = '22004';
   end if;
 
-  if length(v_instructions) = 0 then
+  if coalesce(btrim(p_instructions), '') = '' then
     raise exception 'invalid: instructions are required'
-      using errcode = '22023';
+      using errcode = '22004';
   end if;
 
   v_difficulty := coalesce(p_difficulty, 1);
@@ -424,23 +413,25 @@ begin
       using errcode = '22023';
   end if;
 
-  if p_local_id is not null then
-    select l.org_id
-      into v_local_org_id
-    from public.locals l
-    where l.id = p_local_id;
-
-    if v_local_org_id is null then
-      raise exception 'not_found: local_id % not found', p_local_id
-        using errcode = '22023';
+  -- Guardrails por rol
+  if v_role = 'admin_org' then
+    -- admin_org SIEMPRE ORG-level, aunque el programa sea local-specific
+    v_effective_local_id := null;
+  else
+    -- superadmin puede setear local_id (si viene) pero debe pertenecer al org del programa
+    if p_local_id is not null then
+      if not exists (
+        select 1
+        from public.locals l
+        where l.id = p_local_id
+          and l.org_id = v_program_org_id
+      ) then
+        raise exception 'invalid: local_id % not in program org scope', p_local_id
+          using errcode = '42501';
+      end if;
     end if;
-    if v_local_org_id <> v_program_org_id then
-      raise exception 'invalid: local_id % not in program org scope', p_local_id
-        using errcode = '22023';
-    end if;
+    v_effective_local_id := p_local_id;
   end if;
-
-  v_scenario_local_id := case when v_role = 'admin_org' then null else p_local_id end;
 
   insert into public.practice_scenarios (
     org_id,
@@ -448,22 +439,26 @@ begin
     program_id,
     unit_order,
     title,
-    difficulty,
     instructions,
-    success_criteria
-  ) values (
+    success_criteria,
+    difficulty,
+    is_enabled
+  )
+  values (
     v_program_org_id,
-    v_scenario_local_id,
+    v_effective_local_id,
     p_program_id,
     p_unit_order,
-    v_title,
+    btrim(p_title),
+    p_instructions,
+    coalesce(p_success_criteria, array[]::text[]),
     v_difficulty,
-    v_instructions,
-    coalesce(p_success_criteria, '{}'::text[])
+    true
   )
-  returning practice_scenarios.id, practice_scenarios.created_at
-    into id, created_at;
+  returning public.practice_scenarios.id, public.practice_scenarios.created_at
+  into id, created_at;
 
+  -- Emitir evento audit "created" (tabla ya existe en S3.1)
   insert into public.practice_scenario_change_events (
     org_id,
     local_id,
@@ -471,9 +466,10 @@ begin
     actor_user_id,
     event_type,
     payload
-  ) values (
+  )
+  values (
     v_program_org_id,
-    v_scenario_local_id,
+    v_effective_local_id,
     id,
     auth.uid(),
     'created',
@@ -492,7 +488,7 @@ $$;
 ALTER FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") IS 'Post-MVP6 S3.1: create-only practice_scenarios + audit event. Admin Org: org-level only (local_id NULL). Superadmin: org/local. Validates program + unit_order + difficulty.';
+COMMENT ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") IS 'Post-MVP6 S4 fix: admin_org puede crear escenarios ORG-level para programas local-specific; superadmin puede setear local_id.';
 
 
 
@@ -4389,9 +4385,11 @@ CREATE POLICY "practice_scenario_change_events_select_superadmin" ON "public"."p
 ALTER TABLE "public"."practice_scenarios" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "practice_scenarios_insert_admin_org" ON "public"."practice_scenarios" FOR INSERT WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL) AND (EXISTS ( SELECT 1
-   FROM "public"."training_programs" "tp"
-  WHERE (("tp"."id" = "practice_scenarios"."program_id") AND ("tp"."org_id" = "public"."current_org_id"()) AND ("tp"."local_id" IS NULL))))));
+CREATE POLICY "practice_scenarios_insert_admin_org" ON "public"."practice_scenarios" FOR INSERT WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL)));
+
+
+
+COMMENT ON POLICY "practice_scenarios_insert_admin_org" ON "public"."practice_scenarios" IS 'Post-MVP6 S4 fix: admin_org puede insertar escenarios ORG-level (local_id NULL) para programas del org, incluso si el programa es local-specific.';
 
 
 

@@ -307,6 +307,7 @@ Formato estricto (ya usado en practica y evaluacion final):
 
 - Ruta `/org/bot-config` con lectura de views S2 y acciones create/disable practice_scenarios.
 - Selector de local, resumen, unidades, gaps y modales create/disable.
+- Fix S4: admin_org puede crear escenarios ORG-level aunque el programa sea local-specific.
 
 **Riesgos**
 
