@@ -386,7 +386,6 @@ begin
       using errcode = '42501';
   end if;
 
-  -- Validar unit_order existe para el programa
   if not exists (
     select 1
     from public.training_units tu
@@ -413,12 +412,9 @@ begin
       using errcode = '22023';
   end if;
 
-  -- Guardrails por rol
   if v_role = 'admin_org' then
-    -- admin_org SIEMPRE ORG-level, aunque el programa sea local-specific
     v_effective_local_id := null;
   else
-    -- superadmin puede setear local_id (si viene) pero debe pertenecer al org del programa
     if p_local_id is not null then
       if not exists (
         select 1
@@ -458,7 +454,6 @@ begin
   returning public.practice_scenarios.id, public.practice_scenarios.created_at
   into id, created_at;
 
-  -- Emitir evento audit "created" (tabla ya existe en S3.1)
   insert into public.practice_scenario_change_events (
     org_id,
     local_id,
@@ -480,7 +475,7 @@ begin
     )
   );
 
-  return;
+  return query select id, created_at;
 end;
 $$;
 
@@ -488,7 +483,7 @@ $$;
 ALTER FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") IS 'Post-MVP6 S4 fix: admin_org puede crear escenarios ORG-level para programas local-specific; superadmin puede setear local_id.';
+COMMENT ON FUNCTION "public"."create_practice_scenario"("p_program_id" "uuid", "p_unit_order" integer, "p_title" "text", "p_instructions" "text", "p_success_criteria" "text"[], "p_difficulty" integer, "p_local_id" "uuid") IS 'Post-MVP6 S4 fix: returns row (id, created_at). Admin Org: org-level only; superadmin: org/local.';
 
 
 
@@ -714,9 +709,9 @@ begin
     end if;
   end if;
 
-  update public.practice_scenarios
+  update public.practice_scenarios ps
     set is_enabled = false
-  where id = p_scenario_id;
+  where ps.id = p_scenario_id;
 
   disabled_at := now();
   id := p_scenario_id;
@@ -728,7 +723,8 @@ begin
     actor_user_id,
     event_type,
     payload
-  ) values (
+  )
+  values (
     v_scenario_org_id,
     v_scenario_local_id,
     p_scenario_id,
@@ -743,7 +739,7 @@ begin
     )
   );
 
-  return;
+  return query select id, disabled_at;
 end;
 $$;
 
@@ -751,7 +747,7 @@ $$;
 ALTER FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") IS 'Post-MVP6 S3.1: disable (soft) practice_scenarios + audit event. Admin Org: org-level only. Superadmin: org/local.';
+COMMENT ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") IS 'Post-MVP6 S4 fix: resolve ambiguous id in disable_practice_scenario update.';
 
 
 

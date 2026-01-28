@@ -32,7 +32,6 @@ type ScenarioRow = {
 
 type PracticeScenarioPanelProps = {
   localId: string;
-  programId: string;
   units: UnitRow[];
   gaps: GapRow[];
   scenarios: ScenarioRow[];
@@ -41,7 +40,6 @@ type PracticeScenarioPanelProps = {
 
 export default function PracticeScenarioPanel({
   localId,
-  programId,
   units,
   gaps,
   scenarios,
@@ -204,20 +202,33 @@ export default function PracticeScenarioPanel({
               action={createPracticeScenarioAction}
               className="mt-3 space-y-3"
             >
-              <input type="hidden" name="program_id" value={programId} />
               <input type="hidden" name="local_id" value={localId} />
               <div>
                 <label className="text-xs font-semibold text-slate-700">
-                  Unit order
+                  Unidad
                 </label>
-                <input
-                  type="number"
+                <select
                   name="unit_order"
-                  defaultValue={selectedUnit ?? ''}
-                  min={1}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  value={selectedUnit ?? units[0]?.unit_order ?? ''}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setSelectedUnit(
+                      Number.isFinite(nextValue) ? nextValue : null,
+                    );
+                  }}
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                   required
-                />
+                  disabled={units.length === 0}
+                >
+                  {units.length === 0 ? (
+                    <option value="">Sin unidades disponibles</option>
+                  ) : null}
+                  {units.map((unit) => (
+                    <option key={unit.unit_order} value={unit.unit_order}>
+                      Unidad {unit.unit_order} — {unit.unit_title}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-700">

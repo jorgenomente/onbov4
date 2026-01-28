@@ -1560,3 +1560,73 @@ Se ajusta la policy INSERT y la RPC create_practice_scenario para permitir que a
 - Qué habilita: destraba creación de escenarios desde /org/bot-config en programas local-specific
 - Qué cambia: policy de INSERT y validación RPC
 - Qué NO cambia: no habilita escenarios local-level para admin_org
+
+## 2026-01-28 — Post-MVP6 S4 fix: RPCs create/disable retornan filas correctamente
+
+**Tipo:** fix  
+**Alcance:** db
+
+**Resumen**
+Se corrige la salida de create_practice_scenario y disable_practice_scenario para que devuelvan filas con id/created_at o id/disabled_at, siguiendo el contrato esperado en UI.
+
+**Impacto**
+
+- Qué habilita: manejo consistente de respuestas RPC
+- Qué cambia: firma de retorno efectiva (RETURN QUERY)
+- Qué NO cambia: validaciones ni policies
+
+## 2026-01-28 — Post-MVP6 S4 fix: UPDATE disable sin ambigüedad de id
+
+**Tipo:** fix  
+**Alcance:** db
+
+**Resumen**
+Se corrige la ambigüedad en el UPDATE de disable_practice_scenario usando alias de tabla en la condición.
+
+**Impacto**
+
+- Qué habilita: UPDATE robusto sin errores de columna ambigua
+- Qué cambia: query interna del RPC
+- Qué NO cambia: reglas de negocio ni permisos
+
+## 2026-01-28 — Post-MVP6 S4 fix: derive program_id server-side en create scenario
+
+**Tipo:** fix  
+**Alcance:** backend | frontend
+
+**Resumen**
+La Server Action de creación ahora deriva program_id desde v_local_bot_config_summary usando local_id y valida unit_order contra v_local_bot_config_units, evitando payloads inválidos o tampering desde UI.
+
+**Impacto**
+
+- Qué habilita: creación consistente de escenarios cuando el local cambia en UI
+- Qué cambia: el form ya no envía program_id, se resuelve server-side
+- Qué NO cambia: contratos RPC, RLS, ni la pantalla en sí
+
+## 2026-01-28 — Post-MVP6 UI fix: selector de unidad en modal crear escenario
+
+**Tipo:** fix  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se reemplaza el input libre de unit_order por un selector de unidades con nombre, reduciendo errores de selección al crear escenarios.
+
+**Impacto**
+
+- Qué habilita: selección segura de unidad al crear escenarios
+- Qué cambia: modal de creación ahora usa dropdown de unidades
+- Qué NO cambia: DB, RPCs ni validaciones server-side
+
+## 2026-01-28 — Navigation map operativo (MVP + Post-MVP)
+
+**Tipo:** docs  
+**Alcance:** ux | docs
+
+**Resumen**
+Se crea docs/navigation-map.md como fuente operativa de rutas y flujos por rol, con reglas anti-rutas huerfanas y entrypoints obligatorios.
+
+**Impacto**
+
+- Qué habilita: referencia unica y auditada de navegacion
+- Qué cambia: la IA debe leer navigation-map antes de cambios de rutas/UX
+- Qué NO cambia: no modifica pantallas ni permisos

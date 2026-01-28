@@ -37,7 +37,6 @@ export async function createPracticeScenarioAction(formData: FormData) {
   const { role } = await requireUserAndRole(['admin_org', 'superadmin']);
 
   const localId = String(formData.get('local_id') ?? '').trim();
-  const programId = String(formData.get('program_id') ?? '').trim();
   const unitOrderRaw = String(formData.get('unit_order') ?? '').trim();
   const title = String(formData.get('title') ?? '').trim();
   const instructions = String(formData.get('instructions') ?? '').trim();
@@ -49,7 +48,15 @@ export async function createPracticeScenarioAction(formData: FormData) {
   const unitOrder = Number(unitOrderRaw);
   const difficulty = Number(difficultyRaw || '1');
 
-  if (!programId || !Number.isFinite(unitOrder) || unitOrder <= 0) {
+  if (!localId) {
+    redirect(
+      buildRedirectUrl({
+        error: 'local_id requerido',
+      }),
+    );
+  }
+
+  if (!Number.isFinite(unitOrder) || unitOrder <= 0) {
     redirect(
       buildRedirectUrl({
         localId,
@@ -78,6 +85,40 @@ export async function createPracticeScenarioAction(formData: FormData) {
     : [];
 
   const supabase = await getSupabaseServerClient();
+  const { data: summaryRow } = await supabase
+    .from('v_local_bot_config_summary')
+    .select('local_id, active_program_id')
+    .eq('local_id', localId)
+    .maybeSingle();
+
+  const programId = summaryRow?.active_program_id ?? '';
+
+  if (!programId) {
+    redirect(
+      buildRedirectUrl({
+        localId,
+        error: 'programa activo no encontrado',
+      }),
+    );
+  }
+
+  const { data: unitRow } = await supabase
+    .from('v_local_bot_config_units')
+    .select('local_id, program_id, unit_order')
+    .eq('local_id', localId)
+    .eq('program_id', programId)
+    .eq('unit_order', unitOrder)
+    .maybeSingle();
+
+  if (!unitRow) {
+    redirect(
+      buildRedirectUrl({
+        localId,
+        error: 'unit_order invalido para ese programa',
+      }),
+    );
+  }
+
   const { error } = await supabase.rpc('create_practice_scenario', {
     p_program_id: programId,
     p_unit_order: unitOrder,

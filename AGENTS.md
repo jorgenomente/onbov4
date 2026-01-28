@@ -56,7 +56,9 @@ Antes de escribir cualquier código, la IA **DEBE** leer y respetar:
    → Orden de ejecución y fases del MVP
 3. `docs/roadmap-product-final.md`
    → **Roadmap post‑MVP hacia producto final (contexto operativo y checkpoints)**
-4. `AGENTS.md`
+4. `docs/navigation-map.md`
+   → **Mapa de navegacion y rutas operativas (contrato UX / flujo)**
+5. `AGENTS.md`
    → Reglas de comportamiento de la IA
 
 ### Regla de precedencia

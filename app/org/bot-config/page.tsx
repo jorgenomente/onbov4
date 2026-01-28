@@ -286,7 +286,6 @@ export default async function OrgBotConfigPage({ searchParams }: PageProps) {
       {selectedSummary ? (
         <PracticeScenarioPanel
           localId={selectedSummary.local_id}
-          programId={selectedSummary.active_program_id ?? ''}
           units={(units ?? []) as UnitRow[]}
           gaps={(gaps ?? []) as GapRow[]}
           scenarios={(scenarios ?? []) as ScenarioRow[]}
