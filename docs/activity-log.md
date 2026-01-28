@@ -1237,3 +1237,16 @@ Se endurece la RPC create_final_evaluation_config para bloquear nuevas configs s
 
 - Evita cambios de config durante intentos activos
 - Sin cambios de schema ni engine
+
+## 2026-01-28 — QA: smoke SQL guardrail D.2
+
+**Tipo:** docs  
+**Alcance:** db | qa
+
+**Resumen**
+Se agrega script de smoke QA para validar el guardrail D.2 (sin intento activo OK / con intento activo conflict) en `docs/qa/smoke-post-mvp3-d2.sql`.
+
+**Impacto**
+
+- Evidencia audit-friendly del comportamiento esperado
+- No ejecuta QA en este paso
