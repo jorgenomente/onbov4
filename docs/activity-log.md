@@ -1644,3 +1644,17 @@ Se incorporan en el navigation map las rutas reales detectadas por auditoria (/a
 - Qué habilita: mapa alineado con rutas reales
 - Qué cambia: el mapa incluye entradas para drilldowns y root redirect
 - Qué NO cambia: no modifica layouts ni implementa redirects
+
+## 2026-01-28 — Cableado base de navegacion (redirect / + layouts por rol)
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se implementa redirect server-side en / y se agrega layout de organizacion con links minimos por rol, alineados al navigation map.
+
+**Impacto**
+
+- Qué habilita: entrypoint deterministico y navegacion base sin paginas huerfanas
+- Qué cambia: / deja de renderizar UI y redirige segun sesion
+- Qué NO cambia: no agrega CTAs dentro de paginas ni rutas nuevas
