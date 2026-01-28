@@ -432,6 +432,101 @@ $$;
 ALTER FUNCTION "public"."set_learner_training_updated_at"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."set_local_active_program"("p_local_id" "uuid", "p_program_id" "uuid", "p_reason" "text" DEFAULT NULL::"text") RETURNS "uuid"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_role text;
+  v_org_id uuid;
+  v_from_program_id uuid;
+  v_new_program_id uuid;
+  v_local_org_id uuid;
+  v_program_org_id uuid;
+  v_program_local_id uuid;
+begin
+  v_role := public.current_role();
+  v_org_id := public.current_org_id();
+
+  if v_role not in ('admin_org', 'superadmin') then
+    raise exception 'forbidden: role % cannot set active program', v_role
+      using errcode = '42501';
+  end if;
+
+  select l.org_id into v_local_org_id
+  from public.locals l
+  where l.id = p_local_id;
+
+  if v_local_org_id is null then
+    raise exception 'not_found: local_id % not in org scope', p_local_id
+      using errcode = '22023';
+  end if;
+  if v_role = 'admin_org' and v_local_org_id <> v_org_id then
+    raise exception 'not_found: local_id % not in org scope', p_local_id
+      using errcode = '22023';
+  end if;
+
+  select tp.org_id, tp.local_id into v_program_org_id, v_program_local_id
+  from public.training_programs tp
+  where tp.id = p_program_id;
+
+  if v_program_org_id is null then
+    raise exception 'not_found: program_id % not in org scope', p_program_id
+      using errcode = '22023';
+  end if;
+  if v_role = 'admin_org' and v_program_org_id <> v_org_id then
+    raise exception 'not_found: program_id % not in org scope', p_program_id
+      using errcode = '22023';
+  end if;
+  if v_program_org_id <> v_local_org_id then
+    raise exception 'invalid: program_id % not eligible for local_id %', p_program_id, p_local_id
+      using errcode = '22023';
+  end if;
+
+  if v_program_local_id is not null and v_program_local_id <> p_local_id then
+    raise exception 'invalid: program_id % not eligible for local_id %', p_program_id, p_local_id
+      using errcode = '22023';
+  end if;
+
+  select lap.program_id into v_from_program_id
+  from public.local_active_programs lap
+  where lap.local_id = p_local_id;
+
+  insert into public.local_active_programs (local_id, program_id, created_at)
+  values (p_local_id, p_program_id, now())
+  on conflict (local_id)
+  do update set program_id = excluded.program_id;
+
+  v_new_program_id := p_program_id;
+
+  insert into public.local_active_program_change_events (
+    org_id,
+    local_id,
+    from_program_id,
+    to_program_id,
+    changed_by_user_id,
+    reason
+  )
+  values (
+    v_local_org_id,
+    p_local_id,
+    v_from_program_id,
+    v_new_program_id,
+    auth.uid(),
+    p_reason
+  );
+
+  return v_new_program_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_local_active_program"("p_local_id" "uuid", "p_program_id" "uuid", "p_reason" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."set_local_active_program"("p_local_id" "uuid", "p_program_id" "uuid", "p_reason" "text") IS 'Post-MVP3 E.1: Set active program for a local (UPSERT) with audit event. Admin Org / Superadmin only.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."set_profile_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -685,6 +780,21 @@ CREATE TABLE IF NOT EXISTS "public"."learner_trainings" (
 
 
 ALTER TABLE "public"."learner_trainings" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."local_active_program_change_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "org_id" "uuid" NOT NULL,
+    "local_id" "uuid" NOT NULL,
+    "from_program_id" "uuid",
+    "to_program_id" "uuid" NOT NULL,
+    "changed_by_user_id" "uuid" NOT NULL,
+    "reason" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."local_active_program_change_events" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."local_active_programs" (
@@ -1737,6 +1847,11 @@ ALTER TABLE ONLY "public"."learner_trainings"
 
 
 
+ALTER TABLE ONLY "public"."local_active_program_change_events"
+    ADD CONSTRAINT "local_active_program_change_events_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."local_active_programs"
     ADD CONSTRAINT "local_active_programs_pkey" PRIMARY KEY ("local_id");
 
@@ -1967,6 +2082,14 @@ CREATE INDEX "learner_trainings_status_idx" ON "public"."learner_trainings" USIN
 
 
 
+CREATE INDEX "local_active_program_change_events_created_at_idx" ON "public"."local_active_program_change_events" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "local_active_program_change_events_local_id_idx" ON "public"."local_active_program_change_events" USING "btree" ("local_id");
+
+
+
 CREATE INDEX "locals_org_id_idx" ON "public"."locals" USING "btree" ("org_id");
 
 
@@ -2108,6 +2231,10 @@ CREATE OR REPLACE TRIGGER "trg_learner_review_validations_v2_prevent_update" BEF
 
 
 CREATE OR REPLACE TRIGGER "trg_learner_trainings_set_updated_at" BEFORE UPDATE ON "public"."learner_trainings" FOR EACH ROW EXECUTE FUNCTION "public"."set_learner_training_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_local_active_program_change_events_prevent_update" BEFORE DELETE OR UPDATE ON "public"."local_active_program_change_events" FOR EACH ROW EXECUTE FUNCTION "public"."prevent_update_delete"();
 
 
 
@@ -2292,6 +2419,31 @@ ALTER TABLE ONLY "public"."learner_trainings"
 
 ALTER TABLE ONLY "public"."learner_trainings"
     ADD CONSTRAINT "learner_trainings_program_id_fkey" FOREIGN KEY ("program_id") REFERENCES "public"."training_programs"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."local_active_program_change_events"
+    ADD CONSTRAINT "local_active_program_change_events_changed_by_user_id_fkey" FOREIGN KEY ("changed_by_user_id") REFERENCES "public"."profiles"("user_id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."local_active_program_change_events"
+    ADD CONSTRAINT "local_active_program_change_events_from_program_id_fkey" FOREIGN KEY ("from_program_id") REFERENCES "public"."training_programs"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."local_active_program_change_events"
+    ADD CONSTRAINT "local_active_program_change_events_local_id_fkey" FOREIGN KEY ("local_id") REFERENCES "public"."locals"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."local_active_program_change_events"
+    ADD CONSTRAINT "local_active_program_change_events_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."local_active_program_change_events"
+    ADD CONSTRAINT "local_active_program_change_events_to_program_id_fkey" FOREIGN KEY ("to_program_id") REFERENCES "public"."training_programs"("id") ON DELETE RESTRICT;
 
 
 
@@ -2798,7 +2950,29 @@ CREATE POLICY "learner_trainings_update_reviewer" ON "public"."learner_trainings
 
 
 
+ALTER TABLE "public"."local_active_program_change_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "local_active_program_change_events_insert_admin_org" ON "public"."local_active_program_change_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()))));
+
+
+
+CREATE POLICY "local_active_program_change_events_select_admin_org" ON "public"."local_active_program_change_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
+
+
+
+CREATE POLICY "local_active_program_change_events_select_superadmin" ON "public"."local_active_program_change_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
 ALTER TABLE "public"."local_active_programs" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "local_active_programs_insert_admin_org" ON "public"."local_active_programs" FOR INSERT WITH CHECK ((EXISTS ( SELECT 1
+   FROM ("public"."locals" "l"
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "local_active_programs"."program_id")))
+  WHERE (("l"."id" = "local_active_programs"."local_id") AND ("tp"."org_id" = "l"."org_id") AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())))))));
+
 
 
 CREATE POLICY "local_active_programs_select_admin_org" ON "public"."local_active_programs" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
@@ -2812,6 +2986,15 @@ CREATE POLICY "local_active_programs_select_local_roles" ON "public"."local_acti
 
 
 CREATE POLICY "local_active_programs_select_superadmin" ON "public"."local_active_programs" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+
+
+
+CREATE POLICY "local_active_programs_update_admin_org" ON "public"."local_active_programs" FOR UPDATE USING ((EXISTS ( SELECT 1
+   FROM "public"."locals" "l"
+  WHERE (("l"."id" = "local_active_programs"."local_id") AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"()))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM ("public"."locals" "l"
+     JOIN "public"."training_programs" "tp" ON (("tp"."id" = "local_active_programs"."program_id")))
+  WHERE (("l"."id" = "local_active_programs"."local_id") AND ("tp"."org_id" = "l"."org_id") AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())))))));
 
 
 
@@ -3107,6 +3290,12 @@ GRANT ALL ON FUNCTION "public"."set_learner_training_updated_at"() TO "service_r
 
 
 
+GRANT ALL ON FUNCTION "public"."set_local_active_program"("p_local_id" "uuid", "p_program_id" "uuid", "p_reason" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."set_local_active_program"("p_local_id" "uuid", "p_program_id" "uuid", "p_reason" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_local_active_program"("p_local_id" "uuid", "p_program_id" "uuid", "p_reason" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."set_profile_updated_at"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_profile_updated_at"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_profile_updated_at"() TO "service_role";
@@ -3198,6 +3387,12 @@ GRANT ALL ON TABLE "public"."learner_state_transitions" TO "service_role";
 GRANT ALL ON TABLE "public"."learner_trainings" TO "anon";
 GRANT ALL ON TABLE "public"."learner_trainings" TO "authenticated";
 GRANT ALL ON TABLE "public"."learner_trainings" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."local_active_program_change_events" TO "anon";
+GRANT ALL ON TABLE "public"."local_active_program_change_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."local_active_program_change_events" TO "service_role";
 
 
 

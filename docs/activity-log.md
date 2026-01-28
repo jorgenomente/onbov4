@@ -1250,3 +1250,17 @@ Se agrega script de smoke QA para validar el guardrail D.2 (sin intento activo O
 
 - Evidencia audit-friendly del comportamiento esperado
 - No ejecuta QA en este paso
+
+## 2026-01-28 — Post-MVP3 E.1: programa activo por local
+
+**Tipo:** feature  
+**Alcance:** db | rls | backend | frontend | ux
+
+**Resumen**
+Se agrega RPC set_local_active_program con auditoria append-only, RLS de escritura para admin_org/superadmin y pantalla Admin Org para asignar programa activo por local con historial reciente.
+
+**Impacto**
+
+- Cambios de programa activo quedan auditados
+- Admin Org puede actualizar locales sin builder
+- No afecta learner_trainings existentes
