@@ -54,11 +54,33 @@ export default async function ReviewQueuePage() {
         : 0;
       return bDate - aDate;
     }) ?? [];
+  const firstLearnerId = data?.[0]?.learner_id ?? null;
+  const reviewHref = firstLearnerId
+    ? `/referente/review/${firstLearnerId}`
+    : null;
 
   if (!data || data.length === 0) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-4 px-4 py-6">
         <h1 className="text-xl font-semibold">Revisión</h1>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled
+              className="rounded-md bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-500"
+            >
+              Abrir revisión
+            </button>
+            <Link
+              href="/referente/alerts"
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+            >
+              Ver alertas
+            </Link>
+          </div>
+          <p className="text-xs text-slate-500">Sin aprendices para revisar.</p>
+        </div>
         <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
           No hay aprendices en revisión.
         </div>
@@ -191,6 +213,31 @@ export default async function ReviewQueuePage() {
         <p className="text-sm text-slate-500">
           Aprendices pendientes de decisión humana.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {reviewHref ? (
+          <Link
+            href={reviewHref}
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+          >
+            Abrir revisión
+          </Link>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="rounded-md bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-500"
+          >
+            Abrir revisión
+          </button>
+        )}
+        <Link
+          href="/referente/alerts"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Ver alertas
+        </Link>
       </div>
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">

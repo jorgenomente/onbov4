@@ -173,6 +173,7 @@ export default function ChatClient({
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <label className="text-sm font-medium text-slate-700">Tu mensaje</label>
         <textarea
+          id="chat-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           rows={3}

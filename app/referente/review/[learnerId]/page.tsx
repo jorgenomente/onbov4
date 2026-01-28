@@ -89,9 +89,20 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
   ) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-4 px-4 py-6">
-        <Link href="/referente/review" className="text-sm text-slate-500">
-          ← Volver
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/referente/review"
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+          >
+            Volver a cola
+          </Link>
+          <Link
+            href="/referente/alerts"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Ir a alertas
+          </Link>
+        </div>
         <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           Error al cargar evidencia.
         </p>
@@ -241,9 +252,20 @@ export default async function ReviewDetailPage({ params }: ReviewPageProps) {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 px-4 py-6">
-      <Link href="/referente/review" className="text-sm text-slate-500">
-        ← Volver
-      </Link>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/referente/review"
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+        >
+          Volver a cola
+        </Link>
+        <Link
+          href="/referente/alerts"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Ir a alertas
+        </Link>
+      </div>
 
       <div>
         <h1 className="text-xl font-semibold">

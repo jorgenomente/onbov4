@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import ChatClient from './ChatClient';
 import ReviewHistory, {
   type ReviewDecision,
@@ -94,6 +96,21 @@ export default async function LearnerTrainingPage() {
             : 'Seguí las indicaciones del bot para avanzar.'}
         </p>
       </header>
+
+      <div className="flex flex-wrap gap-2">
+        <a
+          href="#chat-input"
+          className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+        >
+          Continuar
+        </a>
+        <Link
+          href="/learner/progress"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Ver progreso
+        </Link>
+      </div>
 
       <ReviewHistory
         decisions={reviewDecisions as ReviewDecision[] | null}

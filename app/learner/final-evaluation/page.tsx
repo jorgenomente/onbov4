@@ -57,9 +57,14 @@ export default async function FinalEvaluationPage() {
             decisions={reviewDecisions as ReviewDecision[] | null}
             title="Historial de decisiones"
           />
-          <Link href="/" className="text-sm text-slate-500">
-            Volver
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/learner/training"
+              className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+            >
+              Volver a entrenamiento
+            </Link>
+          </div>
         </main>
       );
     }
@@ -73,6 +78,15 @@ export default async function FinalEvaluationPage() {
           <p className="text-sm text-slate-500">
             Mesa complicada — revisión humana final.
           </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/learner/training"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Volver a entrenamiento
+          </Link>
         </div>
 
         <ReviewHistory
@@ -130,15 +144,28 @@ export default async function FinalEvaluationPage() {
           decisions={reviewDecisions as ReviewDecision[] | null}
           title="Historial de decisiones"
         />
-        <Link href="/" className="text-sm text-slate-500">
-          Volver
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/learner/training"
+            className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+          >
+            Volver a entrenamiento
+          </Link>
+        </div>
       </main>
     );
   }
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 px-4 py-6">
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/learner/training"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Volver a entrenamiento
+        </Link>
+      </div>
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Evaluación final</h1>
         <p className="text-sm text-slate-500" data-testid="final-progress">

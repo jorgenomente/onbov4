@@ -150,15 +150,18 @@ export default async function OrgMetricsPage({ searchParams }: PageProps) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Link href="/" className="text-xs text-slate-500">
-            ← Volver
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/org/config/bot"
+            className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
+          >
+            Config evaluación final
           </Link>
           <Link
-            href="/org/bot-config"
+            href="/org/config/knowledge-coverage"
             className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
           >
-            Config Bot
+            Cobertura de knowledge
           </Link>
         </div>
         <div>

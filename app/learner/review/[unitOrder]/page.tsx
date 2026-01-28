@@ -35,9 +35,20 @@ export default async function LearnerReviewPage({ params }: ReviewPageProps) {
   if (requestedOrder >= Number(trainingHome.current_unit_order)) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-4 px-4 py-6">
-        <Link href="/learner/progress" className="text-sm text-slate-500">
-          ← Volver a progreso
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/learner/progress"
+            className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+          >
+            Volver a progreso
+          </Link>
+          <Link
+            href="/learner/training"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Volver a entrenamiento
+          </Link>
+        </div>
         <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
           Unidad no disponible para repaso.
         </div>
@@ -64,9 +75,20 @@ export default async function LearnerReviewPage({ params }: ReviewPageProps) {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-4 px-4 py-6">
-      <Link href="/learner/progress" className="text-sm text-slate-500">
-        ← Volver a progreso
-      </Link>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/learner/progress"
+          className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+        >
+          Volver a progreso
+        </Link>
+        <Link
+          href="/learner/training"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Volver a entrenamiento
+        </Link>
+      </div>
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">
           Unidad {requestedOrder}: {unit.title}

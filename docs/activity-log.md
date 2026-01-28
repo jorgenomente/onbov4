@@ -1672,3 +1672,17 @@ Se completa la navegacion minima por rol en learner y referente, con resaltado a
 - Qué habilita: acceso consistente a rutas base por rol
 - Qué cambia: navegacion visible en layouts por rol
 - Qué NO cambia: no agrega links fuera del mapa ni logica de permisos nueva
+
+## 2026-01-28 — CTAs por pantalla (MVP)
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se agregan CTAs primarios/secundarios en pantallas clave para evitar callejones sin salida, respetando el navigation map y sin nuevas rutas.
+
+**Impacto**
+
+- Qué habilita: navegacion consistente entre pantallas por rol
+- Qué cambia: botones y links visibles al inicio de cada pantalla
+- Qué NO cambia: no agrega logica de negocio ni modifica DB

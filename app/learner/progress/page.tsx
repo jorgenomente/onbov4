@@ -38,6 +38,13 @@ export default async function LearnerProgressPage() {
   const currentUnitOrder = Number(
     progressData?.current_unit_order ?? trainingHome?.current_unit_order ?? 0,
   );
+  const completedUnits = units.filter((unit) => unit.is_completed);
+  const lastCompletedUnit = completedUnits.sort(
+    (a, b) => b.unit_order - a.unit_order,
+  )[0];
+  const reviewHref = lastCompletedUnit
+    ? `/learner/review/${lastCompletedUnit.unit_order}`
+    : null;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -62,6 +69,38 @@ export default async function LearnerProgressPage() {
           </div>
         </div>
       </header>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/learner/training"
+            className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+          >
+            Volver a entrenamiento
+          </Link>
+          {reviewHref ? (
+            <Link
+              href={reviewHref}
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+            >
+              Repasar unidad
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-400"
+            >
+              Repasar unidad
+            </button>
+          )}
+        </div>
+        {!reviewHref ? (
+          <p className="text-xs text-slate-500">
+            Completa una unidad para habilitar repaso.
+          </p>
+        ) : null}
+      </div>
 
       <section className="flex flex-col gap-3">
         {units.length === 0 ? (

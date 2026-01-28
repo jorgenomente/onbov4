@@ -49,9 +49,20 @@ export default async function GapLocalsPage({ params }: PageProps) {
   if (error) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-4 px-4 py-6">
-        <Link href="/org/metrics?tab=gaps" className="text-xs text-slate-500">
-          ← Volver a gaps
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/org/metrics"
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+          >
+            Volver a métricas
+          </Link>
+          <Link
+            href="/org/config/knowledge-coverage"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Cobertura de knowledge
+          </Link>
+        </div>
         <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           Error al cargar el detalle del gap.
         </p>
@@ -64,14 +75,26 @@ export default async function GapLocalsPage({ params }: PageProps) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-col gap-2">
-        <Link href="/org/metrics?tab=gaps" className="text-xs text-slate-500">
-          ← Volver a gaps
-        </Link>
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Gap</h1>
           <p className="text-sm text-slate-500">{gapKey}</p>
         </div>
       </header>
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/org/metrics"
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+        >
+          Volver a métricas
+        </Link>
+        <Link
+          href="/org/config/knowledge-coverage"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Cobertura de knowledge
+        </Link>
+      </div>
 
       {rows.length === 0 ? (
         <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">

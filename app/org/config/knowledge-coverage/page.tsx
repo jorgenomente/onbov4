@@ -130,9 +130,6 @@ export default async function KnowledgeCoveragePage({
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-col gap-2">
-        <Link href="/" className="text-xs text-slate-500">
-          ← Volver
-        </Link>
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">
             Cobertura de knowledge por unidad
@@ -143,6 +140,15 @@ export default async function KnowledgeCoveragePage({
           </p>
         </div>
       </header>
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/org/metrics"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Volver a métricas
+        </Link>
+      </div>
 
       {programsError ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">

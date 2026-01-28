@@ -159,9 +159,6 @@ export default async function OrgBotConfigPage({ searchParams }: PageProps) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-col gap-2">
-        <Link href="/org/metrics" className="text-xs text-slate-500">
-          ← Volver a métricas
-        </Link>
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">
             Config del Bot
@@ -171,6 +168,15 @@ export default async function OrgBotConfigPage({ searchParams }: PageProps) {
           </p>
         </div>
       </header>
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/org/metrics"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Volver a métricas
+        </Link>
+      </div>
 
       {hasErrors ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
