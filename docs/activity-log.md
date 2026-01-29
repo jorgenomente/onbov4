@@ -1714,3 +1714,17 @@ Se recrean policies existentes con auth.uid(), auth.role() y current_setting() e
 - Qué habilita: mejor performance de RLS en tablas “hot”
 - Qué cambia: solo la forma de evaluar auth/current_setting, sin alterar lógica
 - Qué NO cambia: no modifica permisos ni comportamientos funcionales
+
+## 2026-01-28 — Consolidación RLS conversations + fix final_evaluation_questions
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se consolida la policy SELECT de conversations en una sola policy y se corrige final_evaluation_questions_select_visible para envolver auth.uid() en SELECT.
+
+**Impacto**
+
+- Qué habilita: reduce warning multiple_permissive_policies y mejora initplan en final_evaluation_questions
+- Qué cambia: policies SELECT de conversations y una policy de final_evaluation_questions
+- Qué NO cambia: semántica de acceso por rol/org/local

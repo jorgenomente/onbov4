@@ -3829,21 +3829,9 @@ CREATE POLICY "conversations_insert_learner" ON "public"."conversations" FOR INS
 
 
 
-CREATE POLICY "conversations_select_admin_org" ON "public"."conversations" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "conversations_select_authenticated" ON "public"."conversations" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."locals" "l"
-  WHERE (("l"."id" = "conversations"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "conversations_select_aprendiz" ON "public"."conversations" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "conversations_select_referente" ON "public"."conversations" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "conversations_select_superadmin" ON "public"."conversations" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("l"."id" = "conversations"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -3957,7 +3945,7 @@ CREATE POLICY "final_evaluation_questions_insert_learner" ON "public"."final_eva
 
 CREATE POLICY "final_evaluation_questions_select_visible" ON "public"."final_evaluation_questions" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM "public"."final_evaluation_attempts" "a"
-  WHERE (("a"."id" = "final_evaluation_questions"."attempt_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = "auth"."uid"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("a"."id" = "final_evaluation_questions"."attempt_id") AND ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("a"."learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
            FROM "public"."learner_trainings" "lt"
           WHERE (("lt"."learner_id" = "a"."learner_id") AND ("lt"."program_id" = "a"."program_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR (("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
            FROM ("public"."learner_trainings" "lt"
