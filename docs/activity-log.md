@@ -1700,3 +1700,17 @@ Se corrige el mapping de admin_org en /auth/redirect para que el landing default
 - Qué habilita: ingreso correcto de admin org a métricas
 - Qué cambia: defaultPath y allowedPrefixes de admin_org
 - Qué NO cambia: lógica de sesión, queries a profiles ni otros roles
+
+## 2026-01-28 — Fix RLS initplan (auth.\* y current_setting)
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se recrean policies existentes con auth.uid(), auth.role() y current_setting() envueltos en SELECT para evitar re-evaluación por fila (initplan).
+
+**Impacto**
+
+- Qué habilita: mejor performance de RLS en tablas “hot”
+- Qué cambia: solo la forma de evaluar auth/current_setting, sin alterar lógica
+- Qué NO cambia: no modifica permisos ni comportamientos funcionales
