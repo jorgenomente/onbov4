@@ -14,6 +14,19 @@ Se agrega un aprendiz E2E listo para evaluación final sin intentos previos, se 
 - Prácticas en modo mock avanzan progreso sin depender de JSON LLM
 - Progreso ya no queda en 0% al completar unidad final única
 
+## 2026-02-04 — Hardening MVP cerrado (E2E + build/lint)
+
+**Tipo:** qa  
+**Alcance:** backend | frontend | db | qa
+
+**Resumen**
+Se ejecutan `npx supabase db reset`, `npm run lint`, `npm run build` y la suite Playwright completa con usuarios E2E separados por flujo. Todo OK.
+
+**Impacto**
+
+- Validación end-to-end completa en local
+- Menor riesgo de regresiones antes de abrir Fase 3
+
 ## 2026-01-31 — Contrato de knowledge + Curso Test E2E + flujo pedagógico
 
 **Tipo:** feature  
