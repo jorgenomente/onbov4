@@ -7,6 +7,12 @@ import {
   getConversationThread,
   mapThreadToProviderMessages,
 } from '../../../lib/ai/thread';
+import {
+  buildLearningMessage,
+  ensureTrainingConversationIntro,
+  getCurrentUnitKnowledgeItems,
+  isLearningStartSignal,
+} from '../../../lib/learner/training-flow';
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
 import { revalidatePath } from 'next/cache';
 
@@ -31,46 +37,8 @@ export async function sendLearnerMessage(
 
   const learnerId = userData.user.id;
 
-  const { data: activeConversation, error: activeError } = await supabase
-    .from('v_learner_active_conversation')
-    .select('conversation_id, unit_order, context')
-    .maybeSingle();
-
-  if (activeError || !activeConversation) {
-    throw new Error('Active conversation context not found');
-  }
-
-  let conversationId = activeConversation.conversation_id as string | null;
-
-  if (!conversationId) {
-    const { data: trainingData, error: trainingError } = await supabase
-      .from('learner_trainings')
-      .select('local_id, program_id, current_unit_order')
-      .eq('learner_id', learnerId)
-      .maybeSingle();
-
-    if (trainingError || !trainingData) {
-      throw new Error('Active training not found');
-    }
-
-    const { data: createdConversation, error: createError } = await supabase
-      .from('conversations')
-      .insert({
-        learner_id: learnerId,
-        local_id: trainingData.local_id,
-        program_id: trainingData.program_id,
-        unit_order: trainingData.current_unit_order,
-        context: 'training',
-      })
-      .select('id')
-      .maybeSingle();
-
-    if (createError || !createdConversation) {
-      throw new Error('Failed to create conversation');
-    }
-
-    conversationId = createdConversation.id;
-  }
+  const { conversationId, learningStarted } =
+    await ensureTrainingConversationIntro(learnerId);
 
   const { error: insertLearnerError } = await supabase
     .from('conversation_messages')
@@ -84,8 +52,29 @@ export async function sendLearnerMessage(
     throw new Error('Failed to store learner message');
   }
 
-  if (!conversationId) {
-    throw new Error('Conversation not initialized');
+  const isStartSignal = isLearningStartSignal(text);
+
+  if (isStartSignal && !learningStarted) {
+    const { items } = await getCurrentUnitKnowledgeItems(learnerId);
+    if (items.length === 0) {
+      throw new Error('No knowledge configured for current unit');
+    }
+
+    const learningReply = buildLearningMessage(items);
+    const { error: insertBotError } = await supabase
+      .from('conversation_messages')
+      .insert({
+        conversation_id: conversationId,
+        sender: 'bot',
+        content: learningReply,
+      });
+
+    if (insertBotError) {
+      throw new Error('Failed to store bot message');
+    }
+
+    revalidatePath('/learner/training');
+    return { reply: learningReply };
   }
 
   const contextPackage = await buildChatContext(learnerId);
@@ -115,6 +104,21 @@ export async function sendLearnerMessage(
   return { reply: reply.text };
 }
 
+export async function startTrainingConversation(): Promise<{
+  conversationId: string;
+}> {
+  const supabase = await getSupabaseServerClient();
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user?.id) {
+    throw new Error('Unauthenticated');
+  }
+
+  const learnerId = userData.user.id;
+  const { conversationId } = await ensureTrainingConversationIntro(learnerId);
+  return { conversationId };
+}
+
 export async function startPracticeScenario(input?: {
   scenarioId?: string;
 }): Promise<{ conversationId: string; attemptId: string }> {
@@ -135,6 +139,14 @@ export async function startPracticeScenario(input?: {
 
   if (trainingError || !trainingData) {
     throw new Error('Active training not found');
+  }
+
+  const { learningStarted } = await ensureTrainingConversationIntro(learnerId);
+
+  if (!learningStarted) {
+    throw new Error(
+      'Antes de practicar, completa el paso de aprendizaje. Escribi "comenzar".',
+    );
   }
 
   let scenarioData: {
@@ -241,6 +253,24 @@ export async function startPracticeScenario(input?: {
 
   if (!conversationId) {
     throw new Error('Practice conversation not initialized');
+  }
+
+  const reminder =
+    scenarioData.success_criteria?.length &&
+    scenarioData.success_criteria.length > 0
+      ? `Antes de practicar, recordá: ${scenarioData.success_criteria.join(' · ')}`
+      : 'Antes de practicar, recordá aplicar los conceptos clave de esta unidad.';
+
+  const { error: reminderError } = await supabase
+    .from('conversation_messages')
+    .insert({
+      conversation_id: conversationId,
+      sender: 'system',
+      content: reminder,
+    });
+
+  if (reminderError) {
+    throw new Error('Failed to insert practice reminder');
   }
 
   const { error: introError } = await supabase
@@ -397,6 +427,17 @@ export async function submitPracticeAnswer(input: {
       attempt_id: attempt.id,
       event_type: 'completed',
     });
+
+    const { error: advanceError } = await supabase.rpc(
+      'advance_learner_training_from_practice',
+      {
+        p_attempt_id: attempt.id,
+      },
+    );
+
+    if (advanceError) {
+      throw new Error('Failed to advance training after practice');
+    }
   }
 
   return {

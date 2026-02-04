@@ -42,11 +42,19 @@ Credenciales demo/local para QA: docs/smoke-credentials.md
 ### Layout / Shell
 
 - /learner/\* (layout con tabs visibles)
+  - Home -> /learner
   - Entrenamiento -> /learner/training
   - Progreso -> /learner/progress
   - Perfil -> /learner/profile
 
 ### Flujos y rutas
+
+#### A0) Home (hub del aprendiz)
+
+- /learner
+  - Proposito: entrypoint unico con estado, progreso y next step
+  - CTA primario: “Continuar” -> /learner/training
+  - Accesos secundarios: tabs superiores (Entrenamiento / Progreso / Perfil)
 
 #### A) Entrenamiento (producto central)
 
@@ -58,6 +66,7 @@ Credenciales demo/local para QA: docs/smoke-credentials.md
   - Enlaces internos:
     - /learner/final-evaluation (cuando habilitado)
     - /learner/progress (ver estado general)
+    - /learner (volver al Home)
   - Estados relevantes que se reflejan aca:
     - en_revision -> mostrar “en revision” + historial de decisiones
 
@@ -194,7 +203,7 @@ Regla:
 
 ### /learner/layout.tsx
 
-- Tabs: Entrenamiento (/learner/training), Progreso (/learner/progress), Perfil (/learner/profile)
+- Tabs: Home (/learner), Entrenamiento (/learner/training), Progreso (/learner/progress), Perfil (/learner/profile)
 - Nada mas.
 
 ### /referente/layout.tsx

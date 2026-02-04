@@ -103,6 +103,113 @@ CREATE TYPE "public"."recommended_action" AS ENUM (
 ALTER TYPE "public"."recommended_action" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."advance_learner_training_from_practice"("p_attempt_id" "uuid") RETURNS TABLE("new_unit_order" integer, "new_progress_percent" numeric)
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_role text;
+  v_learner_id uuid;
+  v_attempt_learner_id uuid;
+  v_program_id uuid;
+  v_unit_order int;
+  v_current_unit_order int;
+  v_max_unit_order int;
+  v_completed_units int;
+  v_progress numeric;
+begin
+  v_role := public.current_role();
+  if v_role <> 'aprendiz' then
+    raise exception 'forbidden: role % cannot advance training', v_role
+      using errcode = '42501';
+  end if;
+
+  v_learner_id := auth.uid();
+  if v_learner_id is null then
+    raise exception 'unauthenticated'
+      using errcode = '42501';
+  end if;
+
+  select pa.learner_id, ps.program_id, ps.unit_order
+    into v_attempt_learner_id, v_program_id, v_unit_order
+  from public.practice_attempts pa
+  join public.practice_scenarios ps on ps.id = pa.scenario_id
+  where pa.id = p_attempt_id;
+
+  if v_attempt_learner_id is null then
+    raise exception 'not_found: practice attempt % not found', p_attempt_id
+      using errcode = '22023';
+  end if;
+
+  if v_attempt_learner_id <> v_learner_id then
+    raise exception 'forbidden: attempt does not belong to learner'
+      using errcode = '42501';
+  end if;
+
+  if not exists (
+    select 1
+    from public.practice_attempt_events pae
+    where pae.attempt_id = p_attempt_id
+      and pae.event_type = 'completed'
+  ) then
+    raise exception 'invalid: practice attempt not completed'
+      using errcode = '22023';
+  end if;
+
+  select lt.current_unit_order
+    into v_current_unit_order
+  from public.learner_trainings lt
+  where lt.learner_id = v_learner_id
+    and lt.program_id = v_program_id;
+
+  if v_current_unit_order is null then
+    raise exception 'not_found: learner training not found'
+      using errcode = '22023';
+  end if;
+
+  select max(tu.unit_order)
+    into v_max_unit_order
+  from public.training_units tu
+  where tu.program_id = v_program_id;
+
+  if v_max_unit_order is null then
+    raise exception 'not_found: program has no units'
+      using errcode = '22023';
+  end if;
+
+  v_current_unit_order := least(
+    v_max_unit_order,
+    greatest(v_current_unit_order, v_unit_order + 1)
+  );
+
+  v_completed_units := least(
+    v_max_unit_order,
+    greatest(v_current_unit_order - 1, v_unit_order)
+  );
+
+  v_progress := least(
+    100,
+    (v_completed_units::numeric / v_max_unit_order::numeric) * 100
+  );
+
+  update public.learner_trainings
+  set current_unit_order = v_current_unit_order,
+      progress_percent = greatest(progress_percent, v_progress)
+  where learner_id = v_learner_id
+    and program_id = v_program_id;
+
+  return query
+  select v_current_unit_order, v_progress;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."advance_learner_training_from_practice"("p_attempt_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."advance_learner_training_from_practice"("p_attempt_id" "uuid") IS 'Advance learner current_unit_order and progress_percent after a completed practice attempt. Learner-only.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."create_and_map_knowledge_item"("p_program_id" "uuid", "p_unit_id" "uuid", "p_title" "text", "p_content" "text", "p_scope" "text", "p_local_id" "uuid", "p_reason" "text" DEFAULT NULL::"text") RETURNS "uuid"
     LANGUAGE "plpgsql"
     AS $$
@@ -748,6 +855,86 @@ ALTER FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_r
 
 
 COMMENT ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") IS 'Post-MVP6 S4 fix: resolve ambiguous id in disable_practice_scenario update.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."ensure_learner_training_from_active_program"() RETURNS "uuid"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_role text;
+  v_learner_id uuid;
+  v_local_id uuid;
+  v_program_id uuid;
+  v_existing_id uuid;
+begin
+  v_role := public.current_role();
+  if v_role <> 'aprendiz' then
+    raise exception 'forbidden: role % cannot init training', v_role
+      using errcode = '42501';
+  end if;
+
+  v_learner_id := auth.uid();
+  if v_learner_id is null then
+    raise exception 'unauthenticated'
+      using errcode = '42501';
+  end if;
+
+  select lt.id
+    into v_existing_id
+  from public.learner_trainings lt
+  where lt.learner_id = v_learner_id;
+
+  if v_existing_id is not null then
+    return v_existing_id;
+  end if;
+
+  select p.local_id
+    into v_local_id
+  from public.profiles p
+  where p.user_id = v_learner_id;
+
+  if v_local_id is null then
+    raise exception 'not_found: learner has no local assigned'
+      using errcode = '22023';
+  end if;
+
+  select lap.program_id
+    into v_program_id
+  from public.local_active_programs lap
+  where lap.local_id = v_local_id;
+
+  if v_program_id is null then
+    raise exception 'not_found: no active program for local'
+      using errcode = '22023';
+  end if;
+
+  insert into public.learner_trainings (
+    learner_id,
+    local_id,
+    program_id,
+    status,
+    current_unit_order,
+    progress_percent
+  ) values (
+    v_learner_id,
+    v_local_id,
+    v_program_id,
+    'en_entrenamiento',
+    1,
+    0
+  )
+  returning id into v_existing_id;
+
+  return v_existing_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."ensure_learner_training_from_active_program"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."ensure_learner_training_from_active_program"() IS 'Create learner_trainings row for current learner based on local_active_programs if missing. Learner-only.';
 
 
 
@@ -3757,34 +3944,18 @@ ALTER TABLE ONLY "public"."unit_knowledge_map"
 ALTER TABLE "public"."alert_events" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "alert_events_insert_aprendiz_final_evaluation" ON "public"."alert_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("alert_type" = 'final_evaluation_submitted'::"public"."alert_type") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("source_table" = 'final_evaluation_attempts'::"text") AND (EXISTS ( SELECT 1
+CREATE POLICY "alert_events_insert_public_consolidated" ON "public"."alert_events" FOR INSERT WITH CHECK (((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("alert_type" = 'final_evaluation_submitted'::"public"."alert_type") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("source_table" = 'final_evaluation_attempts'::"text") AND (EXISTS ( SELECT 1
    FROM (("public"."final_evaluation_attempts" "a"
      JOIN "public"."learner_trainings" "lt" ON (("lt"."learner_id" = "a"."learner_id")))
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("a"."id" = "alert_events"."source_id") AND ("a"."learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("alert_events"."local_id" = "lt"."local_id") AND ("alert_events"."org_id" = "l"."org_id"))))));
-
-
-
-CREATE POLICY "alert_events_insert_reviewer" ON "public"."alert_events" FOR INSERT WITH CHECK ((("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
+  WHERE (("a"."id" = "alert_events"."source_id") AND ("a"."learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("alert_events"."local_id" = "lt"."local_id") AND ("alert_events"."org_id" = "l"."org_id"))))) OR (("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("lt"."learner_id" = "alert_events"."learner_id") AND ("alert_events"."local_id" = "lt"."local_id") AND ("alert_events"."org_id" = "l"."org_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"())))))))));
+  WHERE (("lt"."learner_id" = "alert_events"."learner_id") AND ("alert_events"."local_id" = "lt"."local_id") AND ("alert_events"."org_id" = "l"."org_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"()))))))))));
 
 
 
-CREATE POLICY "alert_events_select_admin_org" ON "public"."alert_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "alert_events_select_aprendiz" ON "public"."alert_events" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "alert_events_select_referente" ON "public"."alert_events" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "alert_events_select_superadmin" ON "public"."alert_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "alert_events_select_authenticated" ON "public"."alert_events" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -3864,24 +4035,12 @@ CREATE POLICY "final_evaluation_attempts_insert_learner" ON "public"."final_eval
 
 
 
-CREATE POLICY "final_evaluation_attempts_select_admin_org" ON "public"."final_evaluation_attempts" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "final_evaluation_attempts_select_authenticated" ON "public"."final_evaluation_attempts" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("lt"."learner_id" = "final_evaluation_attempts"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "final_evaluation_attempts_select_aprendiz" ON "public"."final_evaluation_attempts" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "final_evaluation_attempts_select_referente" ON "public"."final_evaluation_attempts" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("lt"."learner_id" = "final_evaluation_attempts"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."learner_trainings" "lt"
-  WHERE (("lt"."learner_id" = "final_evaluation_attempts"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))));
-
-
-
-CREATE POLICY "final_evaluation_attempts_select_superadmin" ON "public"."final_evaluation_attempts" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("lt"."learner_id" = "final_evaluation_attempts"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -3896,13 +4055,9 @@ CREATE POLICY "final_evaluation_configs_insert_admin" ON "public"."final_evaluat
 
 
 
-CREATE POLICY "final_evaluation_configs_select_admin" ON "public"."final_evaluation_configs" FOR SELECT USING (("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])));
-
-
-
-CREATE POLICY "final_evaluation_configs_select_aprendiz" ON "public"."final_evaluation_configs" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "final_evaluation_configs_select_public_consolidated" ON "public"."final_evaluation_configs" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."learner_trainings" "lt"
-  WHERE (("lt"."learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("lt"."program_id" = "final_evaluation_configs"."program_id"))))));
+  WHERE (("lt"."learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("lt"."program_id" = "final_evaluation_configs"."program_id")))))));
 
 
 
@@ -3939,7 +4094,7 @@ ALTER TABLE "public"."final_evaluation_questions" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "final_evaluation_questions_insert_learner" ON "public"."final_evaluation_questions" FOR INSERT WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."final_evaluation_attempts" "a"
-  WHERE (("a"."id" = "final_evaluation_questions"."attempt_id") AND ("a"."learner_id" = "auth"."uid"())))));
+  WHERE (("a"."id" = "final_evaluation_questions"."attempt_id") AND ("a"."learner_id" = ( SELECT "auth"."uid"() AS "uid"))))));
 
 
 
@@ -3961,11 +4116,7 @@ CREATE POLICY "knowledge_change_events_insert_admin_org" ON "public"."knowledge_
 
 
 
-CREATE POLICY "knowledge_change_events_select_admin_org" ON "public"."knowledge_change_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "knowledge_change_events_select_superadmin" ON "public"."knowledge_change_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "knowledge_change_events_select_public_consolidated" ON "public"."knowledge_change_events" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -3978,15 +4129,7 @@ CREATE POLICY "knowledge_items_insert_admin_org" ON "public"."knowledge_items" F
 
 
 
-CREATE POLICY "knowledge_items_select_admin_org" ON "public"."knowledge_items" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "knowledge_items_select_local_roles" ON "public"."knowledge_items" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"())) AND ("is_enabled" = true)));
-
-
-
-CREATE POLICY "knowledge_items_select_superadmin" ON "public"."knowledge_items" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "knowledge_items_select_public_consolidated" ON "public"."knowledge_items" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"())) AND ("is_enabled" = true)) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -3999,21 +4142,9 @@ CREATE POLICY "knowledge_items_update_admin_org" ON "public"."knowledge_items" F
 ALTER TABLE "public"."learner_future_questions" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "learner_future_questions_select_admin_org" ON "public"."learner_future_questions" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "learner_future_questions_select_public_consolidated" ON "public"."learner_future_questions" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."locals" "l"
-  WHERE (("l"."id" = "learner_future_questions"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "learner_future_questions_select_aprendiz" ON "public"."learner_future_questions" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "learner_future_questions_select_referente" ON "public"."learner_future_questions" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "learner_future_questions_select_superadmin" ON "public"."learner_future_questions" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("l"."id" = "learner_future_questions"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4027,24 +4158,12 @@ CREATE POLICY "learner_review_decisions_insert_reviewer" ON "public"."learner_re
 
 
 
-CREATE POLICY "learner_review_decisions_select_admin_org" ON "public"."learner_review_decisions" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "learner_review_decisions_select_public_consolidated" ON "public"."learner_review_decisions" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("lt"."learner_id" = "learner_review_decisions"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "learner_review_decisions_select_aprendiz" ON "public"."learner_review_decisions" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "learner_review_decisions_select_referente" ON "public"."learner_review_decisions" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("lt"."learner_id" = "learner_review_decisions"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."learner_trainings" "lt"
-  WHERE (("lt"."learner_id" = "learner_review_decisions"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))));
-
-
-
-CREATE POLICY "learner_review_decisions_select_superadmin" ON "public"."learner_review_decisions" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("lt"."learner_id" = "learner_review_decisions"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4058,92 +4177,54 @@ CREATE POLICY "learner_review_validations_v2_insert_reviewer" ON "public"."learn
 
 
 
-CREATE POLICY "learner_review_validations_v2_select_admin_org" ON "public"."learner_review_validations_v2" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "learner_review_validations_v2_select_public_consolidated" ON "public"."learner_review_validations_v2" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("lt"."learner_id" = "learner_review_validations_v2"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "learner_review_validations_v2_select_aprendiz" ON "public"."learner_review_validations_v2" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "learner_review_validations_v2_select_referente" ON "public"."learner_review_validations_v2" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("lt"."learner_id" = "learner_review_validations_v2"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."learner_trainings" "lt"
-  WHERE (("lt"."learner_id" = "learner_review_validations_v2"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))));
-
-
-
-CREATE POLICY "learner_review_validations_v2_select_superadmin" ON "public"."learner_review_validations_v2" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("lt"."learner_id" = "learner_review_validations_v2"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
 ALTER TABLE "public"."learner_state_transitions" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "learner_state_transitions_insert_learner" ON "public"."learner_state_transitions" FOR INSERT WITH CHECK ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("actor_user_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "learner_state_transitions_insert_reviewer" ON "public"."learner_state_transitions" FOR INSERT WITH CHECK ((("actor_user_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
+CREATE POLICY "learner_state_transitions_insert_public_consolidated" ON "public"."learner_state_transitions" FOR INSERT WITH CHECK (((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("actor_user_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("actor_user_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("lt"."learner_id" = "learner_state_transitions"."learner_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"())))))))));
+  WHERE (("lt"."learner_id" = "learner_state_transitions"."learner_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("lt"."local_id" = "public"."current_local_id"()))))))))));
 
 
 
-CREATE POLICY "learner_state_transitions_select_admin_org" ON "public"."learner_state_transitions" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "learner_state_transitions_select_public_consolidated" ON "public"."learner_state_transitions" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("lt"."learner_id" = "learner_state_transitions"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "learner_state_transitions_select_aprendiz" ON "public"."learner_state_transitions" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "learner_state_transitions_select_referente" ON "public"."learner_state_transitions" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("lt"."learner_id" = "learner_state_transitions"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."learner_trainings" "lt"
-  WHERE (("lt"."learner_id" = "learner_state_transitions"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))));
-
-
-
-CREATE POLICY "learner_state_transitions_select_superadmin" ON "public"."learner_state_transitions" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("lt"."learner_id" = "learner_state_transitions"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
 ALTER TABLE "public"."learner_trainings" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "learner_trainings_select_admin_org" ON "public"."learner_trainings" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "learner_trainings_insert_aprendiz" ON "public"."learner_trainings" FOR INSERT WITH CHECK ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("local_id" = "public"."current_local_id"()) AND (EXISTS ( SELECT 1
+   FROM "public"."local_active_programs" "lap"
+  WHERE (("lap"."local_id" = "learner_trainings"."local_id") AND ("lap"."program_id" = "learner_trainings"."program_id"))))));
+
+
+
+CREATE POLICY "learner_trainings_select_authenticated" ON "public"."learner_trainings" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."locals" "l"
-  WHERE (("l"."id" = "learner_trainings"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
+  WHERE (("l"."id" = "learner_trainings"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
-CREATE POLICY "learner_trainings_select_aprendiz" ON "public"."learner_trainings" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "learner_trainings_select_referente" ON "public"."learner_trainings" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "learner_trainings_select_superadmin" ON "public"."learner_trainings" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
-
-
-
-CREATE POLICY "learner_trainings_update_learner_final" ON "public"."learner_trainings" FOR UPDATE USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")))) WITH CHECK ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("status" = ANY (ARRAY['en_practica'::"public"."learner_status", 'en_revision'::"public"."learner_status"]))));
-
-
-
-CREATE POLICY "learner_trainings_update_reviewer" ON "public"."learner_trainings" FOR UPDATE USING ((("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
+CREATE POLICY "learner_trainings_update_public_consolidated" ON "public"."learner_trainings" FOR UPDATE USING (((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
    FROM "public"."locals" "l"
-  WHERE (("l"."id" = "learner_trainings"."local_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("learner_trainings"."local_id" = "public"."current_local_id"()))))))))) WITH CHECK ((("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
+  WHERE (("l"."id" = "learner_trainings"."local_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("learner_trainings"."local_id" = "public"."current_local_id"())))))))))) WITH CHECK (((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid")) AND ("status" = ANY (ARRAY['en_entrenamiento'::"public"."learner_status", 'en_practica'::"public"."learner_status", 'en_riesgo'::"public"."learner_status", 'en_revision'::"public"."learner_status"]))) OR (("public"."current_role"() = ANY (ARRAY['superadmin'::"public"."app_role", 'admin_org'::"public"."app_role", 'referente'::"public"."app_role"])) AND (("public"."current_role"() = 'superadmin'::"public"."app_role") OR (EXISTS ( SELECT 1
    FROM "public"."locals" "l"
-  WHERE (("l"."id" = "learner_trainings"."local_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("learner_trainings"."local_id" = "public"."current_local_id"())))))))));
+  WHERE (("l"."id" = "learner_trainings"."local_id") AND ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("l"."org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("learner_trainings"."local_id" = "public"."current_local_id"()))))))))));
 
 
 
@@ -4154,11 +4235,7 @@ CREATE POLICY "local_active_program_change_events_insert_admin_org" ON "public".
 
 
 
-CREATE POLICY "local_active_program_change_events_select_admin_org" ON "public"."local_active_program_change_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "local_active_program_change_events_select_superadmin" ON "public"."local_active_program_change_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "local_active_program_change_events_select_public_consolidated" ON "public"."local_active_program_change_events" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4172,17 +4249,9 @@ CREATE POLICY "local_active_programs_insert_admin_org" ON "public"."local_active
 
 
 
-CREATE POLICY "local_active_programs_select_admin_org" ON "public"."local_active_programs" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "local_active_programs_select_public_consolidated" ON "public"."local_active_programs" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."locals" "l"
-  WHERE (("l"."id" = "local_active_programs"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "local_active_programs_select_local_roles" ON "public"."local_active_programs" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "local_active_programs_select_superadmin" ON "public"."local_active_programs" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("l"."id" = "local_active_programs"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4198,15 +4267,7 @@ CREATE POLICY "local_active_programs_update_admin_org" ON "public"."local_active
 ALTER TABLE "public"."locals" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "locals_select_admin_org" ON "public"."locals" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "locals_select_own" ON "public"."locals" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "locals_select_superadmin" ON "public"."locals" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "locals_select_public_consolidated" ON "public"."locals" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4220,35 +4281,19 @@ CREATE POLICY "notification_emails_insert_reviewer" ON "public"."notification_em
 
 
 
-CREATE POLICY "notification_emails_select_admin_org" ON "public"."notification_emails" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "notification_emails_select_public_consolidated" ON "public"."notification_emails" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM ("public"."learner_trainings" "lt"
      JOIN "public"."locals" "l" ON (("l"."id" = "lt"."local_id")))
-  WHERE (("lt"."learner_id" = "notification_emails"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "notification_emails_select_aprendiz" ON "public"."notification_emails" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "notification_emails_select_referente" ON "public"."notification_emails" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("lt"."learner_id" = "notification_emails"."learner_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."learner_trainings" "lt"
-  WHERE (("lt"."learner_id" = "notification_emails"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))));
-
-
-
-CREATE POLICY "notification_emails_select_superadmin" ON "public"."notification_emails" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("lt"."learner_id" = "notification_emails"."learner_id") AND ("lt"."local_id" = "public"."current_local_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
 ALTER TABLE "public"."organizations" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "organizations_select_own" ON "public"."organizations" FOR SELECT USING (("id" = "public"."current_org_id"()));
-
-
-
-CREATE POLICY "organizations_select_superadmin" ON "public"."organizations" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "organizations_select_public_consolidated" ON "public"."organizations" FOR SELECT USING ((("id" = "public"."current_org_id"()) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4261,26 +4306,14 @@ CREATE POLICY "practice_attempt_events_insert_learner" ON "public"."practice_att
 
 
 
-CREATE POLICY "practice_attempt_events_select_admin_org" ON "public"."practice_attempt_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "practice_attempt_events_select_authenticated" ON "public"."practice_attempt_events" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM ("public"."practice_attempts" "pa"
      JOIN "public"."locals" "l" ON (("l"."id" = "pa"."local_id")))
-  WHERE (("pa"."id" = "practice_attempt_events"."attempt_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "practice_attempt_events_select_aprendiz" ON "public"."practice_attempt_events" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("pa"."id" = "practice_attempt_events"."attempt_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."practice_attempts" "pa"
-  WHERE (("pa"."id" = "practice_attempt_events"."attempt_id") AND ("pa"."learner_id" = ( SELECT "auth"."uid"() AS "uid")))))));
-
-
-
-CREATE POLICY "practice_attempt_events_select_referente" ON "public"."practice_attempt_events" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("pa"."id" = "practice_attempt_events"."attempt_id") AND ("pa"."learner_id" = ( SELECT "auth"."uid"() AS "uid")))))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."practice_attempts" "pa"
-  WHERE (("pa"."id" = "practice_attempt_events"."attempt_id") AND ("pa"."local_id" = "public"."current_local_id"()))))));
-
-
-
-CREATE POLICY "practice_attempt_events_select_superadmin" ON "public"."practice_attempt_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("pa"."id" = "practice_attempt_events"."attempt_id") AND ("pa"."local_id" = "public"."current_local_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4293,21 +4326,9 @@ CREATE POLICY "practice_attempts_insert_learner" ON "public"."practice_attempts"
 
 
 
-CREATE POLICY "practice_attempts_select_admin_org" ON "public"."practice_attempts" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "practice_attempts_select_authenticated" ON "public"."practice_attempts" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."locals" "l"
-  WHERE (("l"."id" = "practice_attempts"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "practice_attempts_select_aprendiz" ON "public"."practice_attempts" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))));
-
-
-
-CREATE POLICY "practice_attempts_select_referente" ON "public"."practice_attempts" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "practice_attempts_select_superadmin" ON "public"."practice_attempts" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("l"."id" = "practice_attempts"."local_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND ("learner_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4320,103 +4341,47 @@ CREATE POLICY "practice_evaluations_insert_learner" ON "public"."practice_evalua
 
 
 
-CREATE POLICY "practice_evaluations_select_admin_org" ON "public"."practice_evaluations" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
+CREATE POLICY "practice_evaluations_select_authenticated" ON "public"."practice_evaluations" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM ("public"."practice_attempts" "pa"
      JOIN "public"."locals" "l" ON (("l"."id" = "pa"."local_id")))
-  WHERE (("pa"."id" = "practice_evaluations"."attempt_id") AND ("l"."org_id" = "public"."current_org_id"()))))));
-
-
-
-CREATE POLICY "practice_evaluations_select_aprendiz" ON "public"."practice_evaluations" FOR SELECT USING ((("public"."current_role"() = 'aprendiz'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("pa"."id" = "practice_evaluations"."attempt_id") AND ("l"."org_id" = "public"."current_org_id"()))))) OR (("public"."current_role"() = 'aprendiz'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."practice_attempts" "pa"
-  WHERE (("pa"."id" = "practice_evaluations"."attempt_id") AND ("pa"."learner_id" = ( SELECT "auth"."uid"() AS "uid")))))));
-
-
-
-CREATE POLICY "practice_evaluations_select_referente" ON "public"."practice_evaluations" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
+  WHERE (("pa"."id" = "practice_evaluations"."attempt_id") AND ("pa"."learner_id" = ( SELECT "auth"."uid"() AS "uid")))))) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND (EXISTS ( SELECT 1
    FROM "public"."practice_attempts" "pa"
-  WHERE (("pa"."id" = "practice_evaluations"."attempt_id") AND ("pa"."local_id" = "public"."current_local_id"()))))));
-
-
-
-CREATE POLICY "practice_evaluations_select_superadmin" ON "public"."practice_evaluations" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+  WHERE (("pa"."id" = "practice_evaluations"."attempt_id") AND ("pa"."local_id" = "public"."current_local_id"()))))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
 ALTER TABLE "public"."practice_scenario_change_events" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "practice_scenario_change_events_insert_admin_org" ON "public"."practice_scenario_change_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL) AND ("actor_user_id" = "auth"."uid"())));
+CREATE POLICY "practice_scenario_change_events_insert_public_consolidated" ON "public"."practice_scenario_change_events" FOR INSERT WITH CHECK (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL) AND ("actor_user_id" = ( SELECT "auth"."uid"() AS "uid"))) OR (("public"."current_role"() = 'superadmin'::"public"."app_role") AND ("actor_user_id" = ( SELECT "auth"."uid"() AS "uid")))));
 
 
 
-CREATE POLICY "practice_scenario_change_events_insert_superadmin" ON "public"."practice_scenario_change_events" FOR INSERT WITH CHECK ((("public"."current_role"() = 'superadmin'::"public"."app_role") AND ("actor_user_id" = "auth"."uid"())));
-
-
-
-CREATE POLICY "practice_scenario_change_events_select_admin_org" ON "public"."practice_scenario_change_events" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "practice_scenario_change_events_select_referente" ON "public"."practice_scenario_change_events" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "practice_scenario_change_events_select_superadmin" ON "public"."practice_scenario_change_events" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "practice_scenario_change_events_select_public_consolidated" ON "public"."practice_scenario_change_events" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
 ALTER TABLE "public"."practice_scenarios" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "practice_scenarios_insert_admin_org" ON "public"."practice_scenarios" FOR INSERT WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL)));
+CREATE POLICY "practice_scenarios_insert_public_consolidated" ON "public"."practice_scenarios" FOR INSERT WITH CHECK (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL)) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
-COMMENT ON POLICY "practice_scenarios_insert_admin_org" ON "public"."practice_scenarios" IS 'Post-MVP6 S4 fix: admin_org puede insertar escenarios ORG-level (local_id NULL) para programas del org, incluso si el programa es local-specific.';
+CREATE POLICY "practice_scenarios_select_public_consolidated" ON "public"."practice_scenarios" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"()))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
-CREATE POLICY "practice_scenarios_insert_superadmin" ON "public"."practice_scenarios" FOR INSERT WITH CHECK (("public"."current_role"() = 'superadmin'::"public"."app_role"));
-
-
-
-CREATE POLICY "practice_scenarios_select_admin_org" ON "public"."practice_scenarios" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "practice_scenarios_select_local_roles" ON "public"."practice_scenarios" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"()))));
-
-
-
-CREATE POLICY "practice_scenarios_select_superadmin" ON "public"."practice_scenarios" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
-
-
-
-CREATE POLICY "practice_scenarios_update_admin_org" ON "public"."practice_scenarios" FOR UPDATE USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL))) WITH CHECK ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL)));
-
-
-
-CREATE POLICY "practice_scenarios_update_superadmin" ON "public"."practice_scenarios" FOR UPDATE USING (("public"."current_role"() = 'superadmin'::"public"."app_role")) WITH CHECK (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "practice_scenarios_update_public_consolidated" ON "public"."practice_scenarios" FOR UPDATE USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL)) OR ("public"."current_role"() = 'superadmin'::"public"."app_role"))) WITH CHECK (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"()) AND ("local_id" IS NULL)) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "profiles_select_admin_org" ON "public"."profiles" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "profiles_select_own" ON "public"."profiles" FOR SELECT USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
-
-
-
-CREATE POLICY "profiles_select_referente" ON "public"."profiles" FOR SELECT USING ((("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())));
-
-
-
-CREATE POLICY "profiles_select_superadmin" ON "public"."profiles" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "profiles_select_public_consolidated" ON "public"."profiles" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR ("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR (("public"."current_role"() = 'referente'::"public"."app_role") AND ("local_id" = "public"."current_local_id"())) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4427,15 +4392,7 @@ CREATE POLICY "profiles_update_own" ON "public"."profiles" FOR UPDATE USING (("u
 ALTER TABLE "public"."training_programs" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "training_programs_select_admin_org" ON "public"."training_programs" FOR SELECT USING ((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())));
-
-
-
-CREATE POLICY "training_programs_select_local_roles" ON "public"."training_programs" FOR SELECT USING ((("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"()))));
-
-
-
-CREATE POLICY "training_programs_select_superadmin" ON "public"."training_programs" FOR SELECT USING (("public"."current_role"() = 'superadmin'::"public"."app_role"));
+CREATE POLICY "training_programs_select_public_consolidated" ON "public"."training_programs" FOR SELECT USING (((("public"."current_role"() = 'admin_org'::"public"."app_role") AND ("org_id" = "public"."current_org_id"())) OR (("public"."current_role"() = ANY (ARRAY['referente'::"public"."app_role", 'aprendiz'::"public"."app_role"])) AND ("org_id" = "public"."current_org_id"()) AND (("local_id" IS NULL) OR ("local_id" = "public"."current_local_id"()))) OR ("public"."current_role"() = 'superadmin'::"public"."app_role")));
 
 
 
@@ -4470,6 +4427,12 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."advance_learner_training_from_practice"("p_attempt_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."advance_learner_training_from_practice"("p_attempt_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."advance_learner_training_from_practice"("p_attempt_id" "uuid") TO "service_role";
 
 
 
@@ -4530,6 +4493,12 @@ GRANT ALL ON FUNCTION "public"."disable_knowledge_item"("p_knowledge_id" "uuid",
 GRANT ALL ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."disable_practice_scenario"("p_scenario_id" "uuid", "p_reason" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."ensure_learner_training_from_active_program"() TO "anon";
+GRANT ALL ON FUNCTION "public"."ensure_learner_training_from_active_program"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ensure_learner_training_from_active_program"() TO "service_role";
 
 
 

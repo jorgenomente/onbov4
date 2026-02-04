@@ -7,10 +7,12 @@ test('Learner completes final evaluation and advances without manual refresh', a
   page,
 }) => {
   const { learnerEmail, learnerPassword } = getE2ECredentials();
+  const finalEmail = process.env.E2E_FINAL_EMAIL ?? learnerEmail;
+  const finalPassword = process.env.E2E_FINAL_PASSWORD ?? learnerPassword;
 
   await login(page, {
-    email: learnerEmail,
-    password: learnerPassword,
+    email: finalEmail,
+    password: finalPassword,
     expectedPathPrefix: '/learner',
   });
 
@@ -19,6 +21,21 @@ test('Learner completes final evaluation and advances without manual refresh', a
   const progress = page.getByTestId('final-progress');
   const startButton = page.getByTestId('final-start');
   const inReview = page.getByTestId('final-in-review');
+
+  await Promise.race([
+    page.waitForSelector('[data-testid="final-progress"]', {
+      state: 'visible',
+      timeout: 15000,
+    }),
+    page.waitForSelector('[data-testid="final-start"]', {
+      state: 'visible',
+      timeout: 15000,
+    }),
+    page.waitForSelector('[data-testid="final-in-review"]', {
+      state: 'visible',
+      timeout: 15000,
+    }),
+  ]);
 
   if ((await progress.count()) === 0) {
     if ((await startButton.count()) === 0) {

@@ -1,8 +1,8 @@
-# MISC-NEW
+# NEW
 
 ## Contexto
 
-Solicitud inicial del usuario sin detalles adicionales.
+Prompt corto sin contexto adicional ("new").
 
 ## Prompt ejecutado
 
@@ -12,8 +12,8 @@ new
 
 Resultado esperado
 
-Definir el alcance o requerimiento a partir de la solicitud.
+Aclarar el objetivo del prompt antes de producir cambios.
 
 Notas (opcional)
 
-Pendiente de aclaracion del usuario.
+Sin notas.

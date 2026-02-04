@@ -57,13 +57,16 @@ export default async function FinalEvaluationPage() {
             decisions={reviewDecisions as ReviewDecision[] | null}
             title="Historial de decisiones"
           />
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2">
             <Link
-              href="/learner/training"
-              className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+              href="/learner"
+              className="rounded-md bg-emerald-600 px-3 py-2 text-center text-sm font-semibold text-white"
             >
-              Volver a entrenamiento
+              Volver al Home
             </Link>
+            <p className="text-xs text-slate-500">
+              Podés revisar tu progreso mientras esperás la decisión.
+            </p>
           </div>
         </main>
       );
@@ -80,15 +83,6 @@ export default async function FinalEvaluationPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/learner/training"
-            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-          >
-            Volver a entrenamiento
-          </Link>
-        </div>
-
         <ReviewHistory
           decisions={reviewDecisions as ReviewDecision[] | null}
           title="Historial de decisiones"
@@ -99,15 +93,26 @@ export default async function FinalEvaluationPage() {
             {allowed.reason}
           </div>
         ) : (
-          <form action={startFinalEvaluationAction}>
-            <button
-              type="submit"
-              data-testid="final-start"
-              className="w-full rounded-md bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+          <div className="flex flex-col gap-2">
+            <form action={startFinalEvaluationAction}>
+              <button
+                type="submit"
+                data-testid="final-start"
+                className="w-full rounded-md bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+              >
+                Iniciar evaluación final
+              </button>
+            </form>
+            <p className="text-xs text-slate-500">
+              Iniciá la evaluación cuando estés listo.
+            </p>
+            <Link
+              href="/learner"
+              className="text-xs font-semibold text-emerald-700"
             >
-              Iniciar evaluación final
-            </button>
-          </form>
+              Volver al Home
+            </Link>
+          </div>
         )}
       </main>
     );
@@ -144,13 +149,16 @@ export default async function FinalEvaluationPage() {
           decisions={reviewDecisions as ReviewDecision[] | null}
           title="Historial de decisiones"
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2">
           <Link
-            href="/learner/training"
-            className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+            href="/learner"
+            className="rounded-md bg-emerald-600 px-3 py-2 text-center text-sm font-semibold text-white"
           >
-            Volver a entrenamiento
+            Volver al Home
           </Link>
+          <p className="text-xs text-slate-500">
+            Podés revisar tu progreso mientras esperás la decisión.
+          </p>
         </div>
       </main>
     );
@@ -158,14 +166,6 @@ export default async function FinalEvaluationPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 px-4 py-6">
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href="/learner/training"
-          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-        >
-          Volver a entrenamiento
-        </Link>
-      </div>
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Evaluación final</h1>
         <p className="text-sm text-slate-500" data-testid="final-progress">
@@ -215,6 +215,17 @@ export default async function FinalEvaluationPage() {
           Enviar respuesta
         </button>
       </form>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-slate-500">
+          Respondé para avanzar a la siguiente pregunta.
+        </p>
+        <Link
+          href="/learner"
+          className="text-xs font-semibold text-emerald-700"
+        >
+          Volver al Home
+        </Link>
+      </div>
     </main>
   );
 }

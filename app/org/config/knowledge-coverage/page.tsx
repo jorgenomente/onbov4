@@ -353,9 +353,15 @@ export default async function KnowledgeCoveragePage({
                   type="text"
                   name="title"
                   maxLength={120}
+                  placeholder="Introduccion (obligatorio)"
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                   required
                 />
+                <span className="text-[11px] text-slate-500">
+                  Usa prefijos sugeridos: &quot;Introduccion
+                  (obligatorio)&quot;, &quot;Estandar / reglas&quot;,
+                  &quot;Ejemplo&quot;.
+                </span>
               </label>
             </div>
 
@@ -364,9 +370,14 @@ export default async function KnowledgeCoveragePage({
               <textarea
                 name="content"
                 rows={5}
+                placeholder="Texto breve y operativo (5-15 líneas)."
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                 required
               />
+              <span className="text-[11px] text-slate-500">
+                Evita manuales largos. Todo lo evaluado debe estar aca o en el
+                recordatorio previo.
+              </span>
             </label>
 
             <label className="flex flex-col gap-1 text-sm">

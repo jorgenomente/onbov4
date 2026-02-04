@@ -55,13 +55,11 @@ ONBO es una plataforma B2B de entrenamiento conversacional para camareros. El ap
 
 Este mapa es el checkpoint que se actualiza al avanzar. Cada ítem debe moverse a **Hecho** cuando se complete.
 
-### 1) Hardening MVP (pendiente)
+### 1) Hardening MVP (Hecho — 2026-02-04)
 
-- Ejecutar smoke tests manuales end-to-end (login, training chat, práctica, evaluación final, panel referente).
-- Validar RLS con al menos 2 roles distintos por flujo crítico.
-- Revisar índices básicos (FK + campos de filtros frecuentes).
-- Limpiar mensajes de error y mantener UX fail-closed.
-- Cerrar lote con `npm run build`, `npm run lint`, `npx supabase db reset`.
+- Smoke tests end-to-end (login, training chat, práctica, evaluación final, panel referente) ejecutados con usuarios E2E separados.
+- `npx supabase db reset` + `npm run lint` + `npm run build` + `npm run e2e` OK.
+- Hardening del avance de práctica para no exceder unidad final y progreso consistente.
 
 ### 2) QA sistemático (pendiente)
 

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const tabs = [
+  { href: '/learner', label: 'Home', exact: true },
   { href: '/learner/training', label: 'Entrenamiento' },
   { href: '/learner/progress', label: 'Progreso' },
   { href: '/learner/profile', label: 'Perfil' },
@@ -16,7 +17,9 @@ export default function LearnerTabs() {
     <nav className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4">
         {tabs.map((tab) => {
-          const isActive = pathname?.startsWith(tab.href);
+          const isActive = tab.exact
+            ? pathname === tab.href
+            : pathname?.startsWith(tab.href);
           return (
             <Link
               key={tab.href}

@@ -12,7 +12,7 @@ type RoleConfig = {
 
 const roleConfig: Record<Role, RoleConfig> = {
   aprendiz: {
-    defaultPath: '/learner/training',
+    defaultPath: '/learner',
     allowedPrefixes: ['/learner'],
   },
   referente: {

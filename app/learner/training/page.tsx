@@ -4,7 +4,19 @@ import ChatClient from './ChatClient';
 import ReviewHistory, {
   type ReviewDecision,
 } from '../../../components/ReviewHistory';
+import {
+  getPracticeState,
+  type NextStepAction,
+} from '../../../lib/learner/next-step';
+import { getLearnerStatusUi } from '../../../lib/learner/status-ui';
+import {
+  buildPracticeReminder,
+  ensureTrainingConversationIntro,
+  getCurrentUnitKnowledgeItems,
+} from '../../../lib/learner/training-flow';
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
+import ModeIndicator from '../ModeIndicator';
+import NextStepCta from '../NextStepCta';
 
 type ChatMessage = {
   id: string;
@@ -25,11 +37,20 @@ export default async function LearnerTrainingPage() {
     );
   }
 
+  const { conversationId: trainingConversationId, learningStarted } =
+    await ensureTrainingConversationIntro(userData.user.id);
+
   const { data: trainingHome } = await supabase
     .from('v_learner_training_home')
     .select(
-      'program_name, current_unit_order, current_unit_title, progress_percent',
+      'program_name, current_unit_order, current_unit_title, progress_percent, status',
     )
+    .maybeSingle();
+
+  const { data: trainingMeta } = await supabase
+    .from('learner_trainings')
+    .select('local_id, program_id')
+    .eq('learner_id', userData?.user?.id ?? '')
     .maybeSingle();
 
   const { data: reviewDecisions } = await supabase
@@ -54,7 +75,10 @@ export default async function LearnerTrainingPage() {
     );
   }
 
-  const conversationId = activeConversation?.conversation_id ?? null;
+  const practiceActive = activeConversation?.context === 'practice';
+  const conversationId = practiceActive
+    ? (activeConversation?.conversation_id ?? null)
+    : trainingConversationId;
   let initialMessages: ChatMessage[] = [];
 
   if (conversationId) {
@@ -86,6 +110,54 @@ export default async function LearnerTrainingPage() {
     }));
   }
 
+  const statusUi = getLearnerStatusUi(trainingHome?.status ?? null);
+  const hasTraining = Boolean(
+    trainingMeta?.program_id && trainingMeta?.local_id,
+  );
+  const practiceState = await getPracticeState({
+    supabase,
+    learnerId: userData?.user?.id ?? '',
+    programId: trainingMeta?.program_id ?? null,
+    unitOrder: trainingHome?.current_unit_order ?? null,
+    localId: trainingMeta?.local_id ?? null,
+  });
+  const shouldStartPractice =
+    hasTraining &&
+    practiceState.available &&
+    learningStarted &&
+    !practiceState.completed &&
+    !practiceActive;
+  const primaryAction: NextStepAction = statusUi.chatInputDisabled
+    ? { type: 'home', label: 'Volver al Home', href: '/learner' }
+    : shouldStartPractice
+      ? { type: 'practice', label: 'Continuar' }
+      : { type: 'training', label: 'Continuar', href: '#chat-input' };
+  const hintLine = statusUi.chatInputDisabled
+    ? (statusUi.trainingHint ?? 'La evaluación está en revisión.')
+    : practiceActive
+      ? 'Estás practicando en esta unidad.'
+      : shouldStartPractice
+        ? 'Tu próximo paso es practicar esta unidad.'
+        : practiceState.available &&
+            !practiceState.completed &&
+            !learningStarted
+          ? 'Antes de practicar, escribí "comenzar" para ver el contenido.'
+          : 'Tu próximo paso es aprender esta unidad.';
+  const hasActiveConversation = Boolean(conversationId);
+  const inputDisabled =
+    statusUi.chatInputDisabled || !hasTraining || !hasActiveConversation;
+  const inputDisabledReason = !hasTraining
+    ? 'Tu entrenamiento todavía no está asignado. Contactá a un referente.'
+    : !hasActiveConversation
+      ? 'Necesitamos iniciar el contexto antes de continuar.'
+      : statusUi.chatInputHint;
+
+  const practiceReminder = practiceActive
+    ? buildPracticeReminder(
+        (await getCurrentUnitKnowledgeItems(userData.user.id)).items,
+      )
+    : null;
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-col gap-1">
@@ -97,19 +169,29 @@ export default async function LearnerTrainingPage() {
         </p>
       </header>
 
-      <div className="flex flex-wrap gap-2">
-        <a
-          href="#chat-input"
-          className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
-        >
-          Continuar
-        </a>
-        <Link
-          href="/learner/progress"
-          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-        >
-          Ver progreso
-        </Link>
+      <div data-testid="training-phase">
+        <ModeIndicator
+          mode={
+            practiceActive || shouldStartPractice ? 'Practicar' : 'Aprender'
+          }
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
+          <NextStepCta
+            action={primaryAction}
+            className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
+            afterPracticeHref="/learner/training"
+          />
+          <Link
+            href="/learner"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Volver al Home
+          </Link>
+        </div>
+        <p className="text-xs text-slate-500">{hintLine}</p>
       </div>
 
       <ReviewHistory
@@ -117,9 +199,40 @@ export default async function LearnerTrainingPage() {
         title="Historial de decisiones"
       />
 
+      {!practiceActive &&
+      practiceState.available &&
+      !practiceState.completed &&
+      !learningStarted ? (
+        <span data-testid="needs-start" className="sr-only">
+          needs-start
+        </span>
+      ) : null}
+
+      {practiceActive && practiceReminder ? (
+        <section
+          data-testid="training-reminder"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+        >
+          <p className="text-xs font-semibold text-amber-700 uppercase">
+            Recordatorio
+          </p>
+          <p className="mt-2 whitespace-pre-line">{practiceReminder}</p>
+        </section>
+      ) : null}
+
+      {!hasTraining ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Todavía no tenés un entrenamiento asignado. Contactá a tu referente
+          para activarlo.
+        </div>
+      ) : null}
+
       <ChatClient
         initialMessages={initialMessages}
-        initialContext={activeConversation?.context ?? 'training'}
+        initialContext={practiceActive ? 'practice' : 'training'}
+        inputDisabled={inputDisabled}
+        inputDisabledReason={inputDisabledReason}
+        showPracticeButton={false}
       />
     </main>
   );

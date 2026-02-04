@@ -154,6 +154,16 @@ export async function evaluatePracticeAnswer(params: {
 }) {
   const { scenario, learnerAnswer, chatContext } = params;
   const detectedSignals = detectDoubtSignals(learnerAnswer);
+  if (process.env.LLM_PROVIDER === 'mock') {
+    return {
+      score: 90,
+      verdict: 'pass' as const,
+      strengths: ['Respuesta clara y alineada al escenario.'],
+      gaps: [],
+      feedback: 'Buen trabajo. Continuá con el siguiente paso.',
+      doubt_signals: detectedSignals,
+    };
+  }
 
   const system =
     `Eres un evaluador estricto y pedagógico.\n\n` +

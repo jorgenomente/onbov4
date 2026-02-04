@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   sendLearnerMessage,
   startPracticeScenario,
+  startTrainingConversation,
   submitPracticeAnswer,
 } from './actions';
 
@@ -19,11 +20,19 @@ type ChatMessage = {
 type ChatClientProps = {
   initialMessages: ChatMessage[];
   initialContext: 'training' | 'practice' | string;
+  inputDisabled?: boolean;
+  inputDisabledReason?: string;
+  showPracticeButton?: boolean;
+  showStartConversation?: boolean;
 };
 
 export default function ChatClient({
   initialMessages,
   initialContext,
+  inputDisabled = false,
+  inputDisabledReason,
+  showPracticeButton = true,
+  showStartConversation = false,
 }: ChatClientProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
@@ -42,7 +51,7 @@ export default function ChatClient({
   }, [initialMessages, initialContext]);
 
   async function handleStartPractice() {
-    if (loading) return;
+    if (loading || inputDisabled) return;
     setLoading(true);
     setError('');
 
@@ -62,10 +71,31 @@ export default function ChatClient({
     }
   }
 
+  async function handleStartConversation() {
+    if (loading) return;
+    setLoading(true);
+    setError('');
+
+    try {
+      await startTrainingConversation();
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : '';
+      if (message.toLowerCase().includes('active training not found')) {
+        setError('Todavía no tenés un entrenamiento asignado.');
+      } else {
+        setError('No pudimos iniciar el entrenamiento. Intentá de nuevo.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || inputDisabled) return;
 
     setLoading(true);
     setError('');
@@ -108,7 +138,10 @@ export default function ChatClient({
 
   return (
     <section className="flex flex-1 flex-col gap-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
+      <div
+        data-testid={mode === 'practice' ? 'practice-card' : undefined}
+        className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4"
+      >
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-700">
@@ -123,10 +156,12 @@ export default function ChatClient({
           )}
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div data-testid="chat-thread" className="flex flex-col gap-3">
           {orderedMessages.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-              Todavía no hay mensajes. Empezá con tu primera pregunta.
+              {showStartConversation
+                ? 'Listo para comenzar. Cuando inicies, el bot te va a guiar.'
+                : 'Todavía no hay mensajes. Empezá con tu primera pregunta.'}
             </div>
           ) : (
             orderedMessages.map((message) => (
@@ -135,6 +170,8 @@ export default function ChatClient({
                 className={`flex ${
                   message.sender === 'learner' ? 'justify-end' : 'justify-start'
                 }`}
+                data-testid="chat-message"
+                data-role={message.sender}
               >
                 <div
                   className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
@@ -159,11 +196,22 @@ export default function ChatClient({
         </div>
       ) : null}
 
-      {mode !== 'practice' ? (
+      {showStartConversation ? (
+        <button
+          type="button"
+          onClick={handleStartConversation}
+          disabled={loading}
+          className="w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          Comenzar
+        </button>
+      ) : null}
+
+      {mode !== 'practice' && showPracticeButton ? (
         <button
           type="button"
           onClick={handleStartPractice}
-          disabled={loading}
+          disabled={loading || inputDisabled}
           className="w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
         >
           Iniciar práctica
@@ -174,18 +222,25 @@ export default function ChatClient({
         <label className="text-sm font-medium text-slate-700">Tu mensaje</label>
         <textarea
           id="chat-input"
+          data-testid="chat-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           rows={3}
           className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-emerald-500 focus:outline-none"
           placeholder="Escribí tu pregunta..."
-          disabled={loading}
+          disabled={loading || inputDisabled}
           required
         />
+        {inputDisabled ? (
+          <p className="text-xs text-slate-500">
+            {inputDisabledReason ?? 'Este chat está temporalmente bloqueado.'}
+          </p>
+        ) : null}
         <button
           type="submit"
+          data-testid="chat-send"
           className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
-          disabled={loading}
+          disabled={loading || inputDisabled}
         >
           Enviar
         </button>

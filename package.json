@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:e2e:learner": "playwright test e2e/learner-course-test-flow.spec.ts",
+    "test:e2e:learner:headed": "playwright test e2e/learner-course-test-flow.spec.ts --headed --trace=on",
     "gemini:list-models": "node --import tsx scripts/gemini-list-models.ts",
     "gemini:smoke": "node --import tsx scripts/gemini-smoke.ts",
     "db:dump:schema": "npx supabase db dump --local --schema public > docs/db/schema.public.sql",
@@ -54,7 +56,7 @@
   "devDependencies": {
     "@commitlint/cli": "^20.3.1",
     "@commitlint/config-conventional": "^20.3.1",
-    "@playwright/test": "^1.58.0",
+    "@playwright/test": "^1.58.1",
     "@tailwindcss/forms": "^0.5.11",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.19",

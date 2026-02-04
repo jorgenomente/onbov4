@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { getLearnerStatusUi } from '../../../lib/learner/status-ui';
 import { getSupabaseServerClient } from '../../../lib/server/supabase';
 
 type ReviewDecision = {
@@ -60,6 +61,13 @@ export default async function LearnerProfilePage() {
 
   const reviewHistory = (decisions as ReviewDecision[] | undefined) ?? [];
   const localName = !localError && local?.name ? local.name : null;
+  const statusUi = getLearnerStatusUi(trainingHome?.status ?? null);
+  const badgeToneStyles = {
+    neutral: 'bg-slate-100 text-slate-600',
+    info: 'bg-blue-50 text-blue-700',
+    warning: 'bg-amber-50 text-amber-700',
+    success: 'bg-emerald-50 text-emerald-700',
+  };
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -119,7 +127,14 @@ export default async function LearnerProfilePage() {
           <div className="flex items-center justify-between">
             <div>
               <span className="text-xs text-slate-400">Estado</span>
-              <p className="text-slate-700">{trainingHome?.status ?? '—'}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span
+                  className={`rounded-full px-2 py-1 font-semibold ${badgeToneStyles[statusUi.badge.tone]}`}
+                >
+                  {statusUi.badge.label}
+                </span>
+                <span>{statusUi.statusHint}</span>
+              </div>
             </div>
             <div className="text-right">
               <span className="text-xs text-slate-400">Progreso</span>

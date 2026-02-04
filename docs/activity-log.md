@@ -1,3 +1,61 @@
+## 2026-02-04 — Hardening E2E: seed final learner + cap de avance
+
+**Tipo:** fix  
+**Alcance:** db | qa | docs
+
+**Resumen**
+Se agrega un aprendiz E2E listo para evaluación final sin intentos previos, se crea training base para el aprendiz E2E de Curso Test, se corrige el avance y progreso de práctica (cap a última unidad y 100% en unidad final), se ajustan los tests E2E para aislar usuarios por flujo y el mock evaluator de práctica devuelve un pass determinístico.
+
+**Impacto**
+
+- Evita `current_unit_order` inválido luego de prácticas
+- Smoke de evaluación final deja de bloquearse por intento 999 seed
+- E2E más estable al separar usuarios por flujo
+- Prácticas en modo mock avanzan progreso sin depender de JSON LLM
+- Progreso ya no queda en 0% al completar unidad final única
+
+## 2026-01-31 — Contrato de knowledge + Curso Test E2E + flujo pedagógico
+
+**Tipo:** feature  
+**Alcance:** db | frontend | ux | docs
+
+**Resumen**
+Se documenta el contrato de knowledge, se agrega un Curso Test (E2E) con unidad, knowledge y práctica, y se ajusta el flujo del aprendiz para iniciar con introducción automática y gating pedagógico antes de practicar.
+
+**Impacto**
+
+- Admin tiene guía clara para cargar knowledge operativo
+- Flujo Aprendiz inicia con introducción, aprendizaje y luego práctica
+- Se avanza unidad al completar práctica, sin tocar evaluación final
+
+## 2026-01-31 — E2E Curso Test (Playwright) + data-testid Learner
+
+**Tipo:** test  
+**Alcance:** frontend | qa | docs
+
+**Resumen**
+Se agregan data-testid en Home/Training del aprendiz y un spec Playwright determinístico para el flujo del Curso Test (E2E), con runner y documentación.
+
+**Impacto**
+
+- Cobertura E2E del flujo Aprendiz con LLM_PROVIDER=mock
+- Selectores estables sin depender de texto del bot
+- No cambia lógica de negocio ni rutas
+
+## 2026-01-31 — Simplificación del flujo Aprendiz (Home + Entrenamiento)
+
+**Tipo:** fix  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se simplifica el Home del aprendiz con CTA único “Continuar”, se elimina la elección Aprender/Practicar y se evita el gating de evaluación final fuera de su ruta. En Entrenamiento se agrega inicialización explícita de conversación y un recordatorio previo al role‑play.
+
+**Impacto**
+
+- Home muestra estado + unidad actual sin acciones duplicadas ni prácticas bloqueadas
+- Entrenamiento no falla sin contexto activo y guía antes de prácticas
+- No cambia el modelo de datos ni las reglas de evaluación final
+
 ## 2026-01-26 — E2E smoke tests con Playwright
 
 **Tipo:** feature  
@@ -1728,3 +1786,171 @@ Se consolida la policy SELECT de conversations en una sola policy y se corrige f
 - Qué habilita: reduce warning multiple_permissive_policies y mejora initplan en final_evaluation_questions
 - Qué cambia: policies SELECT de conversations y una policy de final_evaluation_questions
 - Qué NO cambia: semántica de acceso por rol/org/local
+
+## 2026-01-29 — RLS lint batch 1 (initplan + select consolidations)
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se ajustan 3 policies con auth.uid() sin SELECT y se consolidan policies SELECT por rol DB en tablas de alto trafico (alert_events, final_evaluation_attempts, learner_trainings, practice_attempts, practice_attempt_events, practice_evaluations) para eliminar warnings de multiple permissive policies.
+
+**Impacto**
+
+- Qué habilita: reduce warnings de performance RLS en batch 1
+- Qué cambia: policies SELECT consolidadas por tabla + fixes initplan puntuales
+- Qué NO cambia: reglas de acceso org/local/rol ni permisos funcionales
+
+## 2026-01-29 — RLS lint batch 2 (consolidation complete)
+
+**Tipo:** fix  
+**Alcance:** db | rls
+
+**Resumen**
+Se consolidan todas las policies PERMISSIVE restantes por tabla+cmd+rol DB en una sola policy (to public), aplicando OR de qual/with_check y reglas de coalesce para evitar aperturas accidentales.
+
+**Impacto**
+
+- Qué habilita: elimina warnings de multiple permissive policies
+- Qué cambia: policies SELECT/INSERT/UPDATE consolidadas en batch2
+- Qué NO cambia: semántica de acceso por org/local/rol
+
+## 2026-01-29 — Supabase db reset 502 (restart)
+
+**Tipo:** fix  
+**Alcance:** db
+
+**Resumen**
+Durante `npx supabase db reset` se recibio un 502 en el restart. Se verifico estado con `npx supabase status` y la DB quedo operativa.
+
+**Impacto**
+
+- Que habilita: documenta el incidente para evitar falsos bugs
+- Que cambia: no cambia schema ni datos
+- Que NO cambia: migraciones y RLS sin modificaciones
+
+## 2026-01-29 — Hardening UX de estado del aprendiz
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se centraliza el mapping estado→UX del aprendiz y se aplican banners, CTAs y bloqueo de input en `/learner/training`. Se agregan badges/labels consistentes en Progreso y Perfil usando el mismo helper.
+
+**Impacto**
+
+- Qué habilita: comunicación clara del estado y próximos pasos sin tocar backend
+- Qué cambia: UI de entrenamiento/progreso/perfil según `learner_trainings.status`
+- Qué NO cambia: reglas de negocio, gating ni flujos server-side
+
+## 2026-01-29 — Navegación coherente del Aprendiz (Home)
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se crea el hub `/learner` como entrypoint del aprendiz, se agrega tab Home, se ajusta el redirect por rol y se incorporan accesos claros desde entrenamiento y evaluación final.
+
+**Impacto**
+
+- Qué habilita: un único punto de entrada con next step claro según estado
+- Qué cambia: navegación y CTAs del aprendiz hacia Home
+- Qué NO cambia: lógica backend, gating o datos
+
+## 2026-01-29 — Next step clarity en pantallas del Aprendiz
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se ajusta microcopy y CTAs para que cada pantalla del aprendiz tenga un único CTA primario y una línea explicativa sin duplicar mensajes entre Home/Training/Final Evaluation.
+
+**Impacto**
+
+- Qué habilita: claridad inmediata del siguiente paso por pantalla
+- Qué cambia: copys y CTAs en Home, Training, Final Evaluation y Progress
+- Qué NO cambia: lógica de negocio ni reglas de navegación
+
+## 2026-01-29 — Training → Practice clarity (Aprendiz)
+
+**Tipo:** feature  
+**Alcance:** frontend | ux
+
+**Resumen**
+Se agrega un helper de “next step” para práctica y modo Aprender/Practicar, con CTA primario y microcopy coherente en Home/Training/Progress sin tocar backend.
+
+**Impacto**
+
+- Qué habilita: flujo claro entre aprendizaje y práctica según disponibilidad/completado
+- Qué cambia: CTAs y hints en pantallas del aprendiz usando estado y práctica existente
+- Qué NO cambia: gating de evaluación final, datos ni lógica server-side
+
+## 2026-01-30 — QA: ajuste smoke E2E aprendiz (Home entrypoint)
+
+**Tipo:** qa  
+**Alcance:** frontend | qa
+
+**Resumen**
+Se ajusta el smoke E2E del aprendiz para usar el entrypoint `/learner` y forzar navegación a `/learner/training` antes de validar el chat.
+
+**Impacto**
+
+- Qué habilita: smoke estable con Home como entrypoint
+- Qué cambia: flujo de navegación en el test E2E
+- Qué NO cambia: lógica de producto ni backend
+
+## 2026-01-30 — QA: espera de loading en smoke final evaluation
+
+**Tipo:** qa  
+**Alcance:** frontend | qa
+
+**Resumen**
+El smoke E2E de evaluación final ahora espera a que el contenido deje de estar en loading antes de decidir si el CTA está disponible.
+
+**Impacto**
+
+- Qué habilita: reduce falsos negativos por estado loading
+- Qué cambia: timing del test final-evaluation
+- Qué NO cambia: comportamiento de la app ni gating
+
+## 2026-01-30 — QA: credenciales recomendadas para smoke final evaluation
+
+**Tipo:** docs  
+**Alcance:** qa | docs
+
+**Resumen**
+Se documenta el usuario `e2e-aprendiz@demo.com` como recomendado para el smoke de evaluación final para evitar bloqueos por el seed de attempts.
+
+**Impacto**
+
+- Qué habilita: ejecución estable de E2E final evaluation
+- Qué cambia: guía de credenciales en `docs/e2e.md`
+- Qué NO cambia: datos ni lógica de negocio
+
+## 2026-01-30 — QA: smoke-credentials incluye e2e-aprendiz
+
+**Tipo:** docs  
+**Alcance:** qa | docs
+
+**Resumen**
+Se agrega `e2e-aprendiz@demo.com` a `docs/smoke-credentials.md` como usuario recomendado para el smoke E2E de evaluación final.
+
+**Impacto**
+
+- Qué habilita: usar credenciales correctas en QA sin bloqueo por attempts seed
+- Qué cambia: listado de credenciales smoke
+- Qué NO cambia: lógica de negocio ni data de producción
+
+## 2026-01-30 — QA: comando recomendado para flujo aprendiz
+
+**Tipo:** docs  
+**Alcance:** qa | docs
+
+**Resumen**
+Se agrega en `docs/e2e.md` un comando recomendado para correr el flujo completo del aprendiz con Playwright.
+
+**Impacto**
+
+- Qué habilita: ejecución rápida del smoke E2E de aprendiz
+- Qué cambia: documentación de QA/E2E
+- Qué NO cambia: comportamiento de la app
